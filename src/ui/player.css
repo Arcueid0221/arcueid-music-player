@@ -17,6 +17,10 @@
   --player-wave-buffered: #d2ccdc;
   --player-wave-center: #e6e1ec;
   --player-pointer: #2d2738;
+  --player-safe-top: env(safe-area-inset-top, 0px);
+  --player-safe-right: env(safe-area-inset-right, 0px);
+  --player-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --player-safe-left: env(safe-area-inset-left, 0px);
   color-scheme: light;
   position: fixed;
   z-index: 2147483000;
@@ -80,6 +84,20 @@ button:focus-visible, input:focus-visible {
   gap: 16px;
   padding: 20px 20px 10px;
 }
+
+.track-header-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.floating-actions { display: flex; gap: 4px; }
+.floating-actions .icon-button { width: 30px; height: 30px; border-radius: 9px; }
+.floating-handle, .collapsed-handle { cursor: grab; touch-action: none; }
+:host([data-dragging="true"]) .floating-handle,
+:host([data-dragging="true"]) .collapsed-handle { cursor: grabbing; }
 
 .track-copy { min-width: 0; }
 
@@ -457,6 +475,30 @@ input[type="range"]:disabled { cursor: not-allowed; opacity: 0.48; }
   transition: background-color 150ms ease, color 150ms ease;
 }
 
+.collapsed-player {
+  display: none;
+  grid-template-columns: 32px 44px 40px;
+  align-items: center;
+  gap: 4px;
+  width: 128px;
+  min-height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 17px;
+  background: var(--player-surface);
+  padding: 6px;
+  box-shadow: 0 18px 46px rgba(8, 6, 14, 0.26);
+  backdrop-filter: blur(22px);
+}
+
+.collapsed-player .icon-button { background: transparent; }
+.collapsed-player .collapsed-play { width: 44px; background: var(--player-accent); color: #fff; }
+.collapsed-player .collapsed-handle { width: 32px; color: var(--player-muted); }
+
+:host([collapsed]) { width: 128px; }
+:host([collapsed]) .player-card { display: none; }
+:host([collapsed]) .collapsed-player { display: grid; }
+:host([data-dragging="true"]) { user-select: none; }
+
 .now-playing-rail:hover,
 .now-playing-rail.is-active { background: var(--player-hover); transform: none; }
 .now-playing-rail.is-active { color: var(--player-accent); }
@@ -477,7 +519,8 @@ input[type="range"]:disabled { cursor: not-allowed; opacity: 0.48; }
 .rail-waveform { display: block; width: 116px; height: 28px; opacity: 0.8; }
 
 @media (max-width: 520px) {
-  :host { right: 12px; bottom: 12px; left: 12px; width: auto; }
+  :host { right: auto; bottom: max(12px, var(--player-safe-bottom)); left: max(12px, var(--player-safe-left)); width: min(420px, calc(100vw - 24px)); }
+  :host([collapsed]) { width: 128px; }
   .track-header { padding: 17px 16px 8px; }
   .waveform-control { width: calc(100% - 32px); margin-right: 16px; margin-left: 16px; }
   .time-row, .transport, .utility-row, .panel-actions { padding-right: 16px; padding-left: 16px; }

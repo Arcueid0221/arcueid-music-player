@@ -4,9 +4,12 @@ import {
   ChevronDown,
   ChevronUp,
   createElement,
+  GripVertical,
   ListPlus,
   ListMusic,
   Minus,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
   Plus,
@@ -29,9 +32,12 @@ export type PlayerIcon =
   | 'chevron-down'
   | 'chevron-up'
   | 'close'
+  | 'drag'
   | 'list-music'
   | 'list-plus'
   | 'minus'
+  | 'maximize'
+  | 'minimize'
   | 'pause'
   | 'play'
   | 'plus'
@@ -51,9 +57,12 @@ const ICONS: Record<PlayerIcon, IconNode> = {
   'chevron-down': ChevronDown,
   'chevron-up': ChevronUp,
   close: X,
+  drag: GripVertical,
   'list-music': ListMusic,
   'list-plus': ListPlus,
   minus: Minus,
+  maximize: Maximize2,
+  minimize: Minimize2,
   pause: Pause,
   play: Play,
   plus: Plus,

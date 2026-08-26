@@ -12,8 +12,10 @@ import {
   JsonPlaylistProvider,
   type PlaylistProvider,
 } from './services/playlist-provider'
+import { PublicMusicApiProvider } from './services/public-music-api-provider'
 import styles from './ui/player.css?inline'
 import { PlayerView } from './ui/player-view'
+import type { DockSidePreference } from './ui/floating-player'
 
 const PLAY_MODES: PlayMode[] = ['order', 'single', 'random']
 const PLAYER_THEMES: PlayerTheme[] = ['light', 'dark', 'system']
@@ -23,8 +25,24 @@ export function resolvePlaylistMode(value: string | null): PlaylistMode {
   return value === 'editable' ? 'editable' : 'readonly'
 }
 
+export function resolveDockSidePreference(value: string | null): DockSidePreference {
+  return value === 'left' || value === 'right' ? value : 'auto'
+}
+
 export class ArcueidMusicPlayer extends HTMLElementBase {
-  static readonly observedAttributes = ['play-mode', 'playlist-mode', 'volume', 'remember-playback', 'playlist-src', 'theme']
+  static readonly observedAttributes = [
+    'music-api',
+    'collapsed',
+    'dock-side',
+    'play-mode',
+    'playlist-id',
+    'playlist-mode',
+    'playlist-src',
+    'remember-playback',
+    'remember-position',
+    'theme',
+    'volume',
+  ]
 
   private playerStore?: PlayerStore
   private controller?: PlayerController
@@ -91,13 +109,18 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
 
     this.playerStore = store
     this.controller = controller
-    this.view = new PlayerView(root, store, controller, engine, playlistMode)
+    this.view = new PlayerView(root, store, controller, engine, playlistMode, {
+      collapsed: this.hasAttribute('collapsed'),
+      dockSide: resolveDockSidePreference(this.getAttribute('dock-side')),
+      rememberPosition: this.hasAttribute('remember-position'),
+      storageKey: this.getAttribute('position-key')
+        || `arcueid-music-player:position:${this.getAttribute('memory-key') || 'default'}`,
+    })
     this.publicEventsCleanup = store.subscribe((state, previous) => this.emitPublicEvents(state, previous))
     this.addEventListener('keydown', this.handleKeydown)
     controller.initialize()
     queueMicrotask(() => this.dispatchEvent(new CustomEvent('ready', { composed: true })))
-    const playlistSrc = this.getAttribute('playlist-src')
-    if (playlistSrc) void controller.loadPlaylist(new JsonPlaylistProvider(playlistSrc)).catch(() => undefined)
+    this.loadConfiguredPlaylist()
   }
 
   disconnectedCallback(): void {
@@ -119,10 +142,11 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
       this.controller.setPlayMode(newValue as PlayMode)
     }
     if (name === 'playlist-mode') this.view?.setPlaylistMode(resolvePlaylistMode(newValue))
+    if (name === 'collapsed') this.view?.setCollapsed(newValue !== null)
+    if (name === 'dock-side') this.view?.setDockSide(resolveDockSidePreference(newValue))
+    if (name === 'remember-position') this.view?.setRememberPosition(newValue !== null)
     if (name === 'volume' && newValue !== null) this.controller.setVolume(this.readVolume())
-    if (name === 'playlist-src' && newValue) {
-      void this.controller.loadPlaylist(new JsonPlaylistProvider(newValue)).catch(() => undefined)
-    }
+    if (name === 'music-api' || name === 'playlist-id' || name === 'playlist-src') this.loadConfiguredPlaylist()
     if (name === 'theme') this.applyTheme()
   }
 
@@ -178,6 +202,22 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     this.setAttribute('theme', PLAYER_THEMES.includes(theme) ? theme : 'system')
   }
 
+  collapse(): void {
+    this.view?.setCollapsed(true)
+  }
+
+  expand(): void {
+    this.view?.setCollapsed(false)
+  }
+
+  toggleCollapsed(): void {
+    this.view?.toggleCollapsed()
+  }
+
+  setDockSide(side: DockSidePreference): void {
+    this.setAttribute('dock-side', resolveDockSidePreference(side))
+  }
+
   setLyricOffset(offsetMs: number): void {
     this.controller?.setLyricOffset(offsetMs)
   }
@@ -229,6 +269,19 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
   private readVolume(): number {
     const value = Number(this.getAttribute('volume') ?? 0.8)
     return Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0.8
+  }
+
+  private loadConfiguredPlaylist(): void {
+    if (!this.controller) return
+    const playlistSrc = this.getAttribute('playlist-src')
+    if (playlistSrc) {
+      void this.controller.loadPlaylist(new JsonPlaylistProvider(playlistSrc)).catch(() => undefined)
+      return
+    }
+    const musicApi = this.getAttribute('music-api')
+    if (!musicApi) return
+    const playlistId = this.getAttribute('playlist-id') || undefined
+    void this.controller.loadPlaylist(new PublicMusicApiProvider(musicApi, { playlistId })).catch(() => undefined)
   }
 
   private applyTheme(): void {

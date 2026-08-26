@@ -81,3 +81,13 @@ export interface PlayerErrorDetail {
   canRetry: boolean
   canSkip: boolean
 }
+
+export interface CollapseChangeDetail {
+  collapsed: boolean
+}
+
+export interface PositionChangeDetail {
+  x: number
+  y: number
+  dockSide: 'left' | 'right'
+}

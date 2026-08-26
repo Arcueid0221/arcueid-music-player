@@ -8,6 +8,17 @@ import { createPlayerIcon, setButtonIcon, type PlayerIcon } from './components/i
 import { LyricView } from './components/lyric-view'
 import { NowPlayingRail } from './components/now-playing-rail'
 import { WaveformRenderer } from './components/waveform'
+import {
+  FloatingPlayerController,
+  type DockSidePreference,
+} from './floating-player'
+
+export interface PlayerViewFloatingOptions {
+  collapsed: boolean
+  dockSide: DockSidePreference
+  rememberPosition: boolean
+  storageKey: string
+}
 
 const MODE_CONTROL: Record<PlayMode, { label: string; icon: PlayerIcon }> = {
   order: { label: '顺序播放', icon: 'repeat' },
@@ -28,6 +39,7 @@ export class PlayerView {
   private readonly nowPlayingRail: NowPlayingRail
   private readonly analysisSource: AudioAnalysisSource
   private readonly lyricView: LyricView
+  private readonly floatingPlayer: FloatingPlayerController
   private readonly unsubscribe: () => void
   private readonly unsubscribeAnalysis: () => void
   private lastPlaylist?: Song[]
@@ -51,6 +63,7 @@ export class PlayerView {
   private readonly currentTime: HTMLElement
   private readonly duration: HTMLElement
   private readonly playButton: HTMLButtonElement
+  private readonly collapsedPlayButton: HTMLButtonElement
   private readonly modeButton: HTMLButtonElement
   private readonly muteButton: HTMLButtonElement
   private readonly volumeInput: HTMLInputElement
@@ -75,6 +88,7 @@ export class PlayerView {
     private readonly controller: PlayerController,
     engine: AudioEngine,
     private playlistMode: PlaylistMode,
+    floatingOptions: PlayerViewFloatingOptions,
   ) {
     root.innerHTML += `
       <section class="player-card" aria-label="音乐播放器">
@@ -85,7 +99,13 @@ export class PlayerView {
             <h2 class="track-title"></h2>
             <p class="track-artist"></p>
           </div>
-          <span class="playback-status" role="status"></span>
+          <div class="track-header-side">
+            <span class="playback-status" role="status"></span>
+            <span class="floating-actions">
+              <button class="icon-button floating-handle" type="button" data-floating-handle></button>
+              <button class="icon-button floating-collapse" type="button" data-floating-collapse></button>
+            </span>
+          </div>
         </header>
 
         <div class="error-banner" role="alert" hidden>
@@ -167,6 +187,12 @@ export class PlayerView {
           <canvas class="rail-waveform" width="116" height="28" aria-hidden="true"></canvas>
         </button>
       </section>
+
+      <section class="collapsed-player" aria-label="已收缩的音乐播放器">
+        <button class="icon-button collapsed-handle" type="button" data-floating-handle></button>
+        <button class="icon-button collapsed-play" type="button" data-action="toggle"></button>
+        <button class="icon-button collapsed-expand" type="button" data-floating-expand></button>
+      </section>
     `
 
     this.title = this.get('.track-title')
@@ -179,6 +205,7 @@ export class PlayerView {
     this.currentTime = this.get('.current-time')
     this.duration = this.get('.duration')
     this.playButton = this.get('[data-action="toggle"]')
+    this.collapsedPlayButton = this.get('.collapsed-play')
     this.modeButton = this.get('[data-action="mode"]')
     this.muteButton = this.get('[data-action="mute"]')
     this.volumeInput = this.get('[data-action="volume"]')
@@ -219,6 +246,20 @@ export class PlayerView {
     setButtonIcon(this.get('[data-action="lyric-earlier"]'), 'minus', '歌词提前 0.5 秒')
     setButtonIcon(this.get('[data-action="lyric-later"]'), 'plus', '歌词延后 0.5 秒')
 
+    const floatingHandles = [...root.querySelectorAll<HTMLElement>('[data-floating-handle]')]
+    const collapseButton = this.get<HTMLButtonElement>('[data-floating-collapse]')
+    const expandButton = this.get<HTMLButtonElement>('[data-floating-expand]')
+    floatingHandles.forEach((handle) => setButtonIcon(handle as HTMLButtonElement, 'drag', '移动播放器'))
+    setButtonIcon(collapseButton, 'minimize', '收缩播放器')
+    setButtonIcon(expandButton, 'maximize', '展开播放器')
+    this.floatingPlayer = new FloatingPlayerController({
+      host: root.host as HTMLElement,
+      handles: floatingHandles,
+      collapseButton,
+      expandButton,
+      ...floatingOptions,
+    })
+
     this.bindEvents()
     this.unsubscribeAnalysis = this.analysisSource.subscribe((frame) => {
       this.waveform.update(frame)
@@ -236,11 +277,28 @@ export class PlayerView {
     this.render(this.store.getState())
   }
 
+  setCollapsed(value: boolean): void {
+    this.floatingPlayer.setCollapsed(value)
+  }
+
+  toggleCollapsed(): void {
+    this.floatingPlayer.toggleCollapsed()
+  }
+
+  setDockSide(value: DockSidePreference): void {
+    this.floatingPlayer.setDockPreference(value)
+  }
+
+  setRememberPosition(value: boolean): void {
+    this.floatingPlayer.setRememberPosition(value)
+  }
+
   destroy(): void {
     this.eventController.abort()
     this.unsubscribe()
     this.unsubscribeAnalysis()
     this.analysisSource.destroy()
+    this.floatingPlayer.destroy()
     this.waveform.destroy()
     this.nowPlayingRail.destroy()
   }
@@ -412,8 +470,10 @@ export class PlayerView {
     this.duration.textContent = formatTime(duration)
 
     if (this.lastPlaying !== state.isPlaying) {
-      setButtonIcon(this.playButton, state.isPlaying ? 'pause' : 'play', state.isPlaying ? '暂停' : '播放')
-      this.playButton.setAttribute('aria-pressed', String(state.isPlaying))
+      for (const button of [this.playButton, this.collapsedPlayButton]) {
+        setButtonIcon(button, state.isPlaying ? 'pause' : 'play', state.isPlaying ? '暂停' : '播放')
+        button.setAttribute('aria-pressed', String(state.isPlaying))
+      }
       this.lastPlaying = state.isPlaying
     }
     if (this.lastMode !== state.playMode) {
