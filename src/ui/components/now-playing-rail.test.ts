@@ -7,6 +7,7 @@ const state: PlayerState = {
   currentIndex: 0,
   currentTime: 0,
   duration: 100,
+  buffered: 60,
   volume: 0.8,
   muted: false,
   isPlaying: false,

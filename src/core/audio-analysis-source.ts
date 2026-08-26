@@ -3,6 +3,7 @@ import type { AudioEngine } from './audio-engine'
 export interface AudioAnalysisFrame {
   samples: Uint8Array | null
   progress: number
+  bufferedProgress: number
 }
 
 type AnalysisListener = (frame: AudioAnalysisFrame) => void
@@ -56,9 +57,11 @@ export class AudioAnalysisSource {
 
   private snapshot(): AudioAnalysisFrame {
     const progress = this.engine.duration > 0 ? this.engine.currentTime / this.engine.duration : 0
+    const bufferedProgress = this.engine.duration > 0 ? this.engine.buffered / this.engine.duration : 0
     return {
       samples: this.lastSamples,
       progress: Math.min(Math.max(progress, 0), 1),
+      bufferedProgress: Math.min(Math.max(bufferedProgress, 0), 1),
     }
   }
 

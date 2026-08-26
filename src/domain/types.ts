@@ -15,6 +15,7 @@ export interface Song {
   album?: string
   src: string
   duration?: number
+  artwork?: MediaImage[]
   lyrics?: string | LyricLine[]
   lyricsUrl?: string
 }
@@ -24,6 +25,7 @@ export interface PlayerState {
   currentIndex: number
   currentTime: number
   duration: number
+  buffered: number
   volume: number
   muted: boolean
   isPlaying: boolean
@@ -38,6 +40,7 @@ export interface PlayerState {
 export interface AudioSnapshot {
   currentTime: number
   duration: number
+  buffered: number
   isPlaying: boolean
   isLoading: boolean
   error?: string

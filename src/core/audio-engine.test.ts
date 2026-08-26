@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { resolveOutputGain } from './audio-engine'
+import { resolveBufferedEnd, resolveOutputGain } from './audio-engine'
 
 describe('resolveOutputGain', () => {
   it('uses the selected volume while audible', () => {
@@ -81,5 +81,20 @@ describe('AudioEngine output graph', () => {
     expect(internals.audio.volume).toBe(1)
     expect(internals.audio.muted).toBe(false)
     engine.destroy()
+  })
+})
+
+describe('resolveBufferedEnd', () => {
+  it('uses the furthest buffered range without exceeding duration', () => {
+    const ranges = {
+      length: 2,
+      end: (index: number) => [18, 72][index] ?? 0,
+    }
+    expect(resolveBufferedEnd(ranges, 100)).toBe(72)
+    expect(resolveBufferedEnd(ranges, 60)).toBe(60)
+  })
+
+  it('returns zero when nothing is buffered', () => {
+    expect(resolveBufferedEnd({ length: 0, end: () => 0 }, 100)).toBe(0)
   })
 })

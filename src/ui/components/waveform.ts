@@ -27,7 +27,7 @@ export class WaveformRenderer {
   private readonly context: CanvasRenderingContext2D
   private readonly resizeObserver: ResizeObserver
   private readonly compact: boolean
-  private frame: AudioAnalysisFrame = { samples: null, progress: 0 }
+  private frame: AudioAnalysisFrame = { samples: null, progress: 0, bufferedProgress: 0 }
   private pointerRatio: number | null = null
 
   constructor(private readonly canvas: HTMLCanvasElement, options: WaveformOptions = {}) {
@@ -73,10 +73,18 @@ export class WaveformRenderer {
     const count = Math.max(2, Math.floor((width + preferredGap) / (barWidth + preferredGap)))
     const amplitudes = sampleAmplitudes(this.frame.samples, count)
     const progress = Math.min(Math.max(this.frame.progress, 0), 1)
+    const bufferedProgress = Math.min(Math.max(this.frame.bufferedProgress, progress), 1)
 
     this.context.clearRect(0, 0, width, height)
     this.drawCenterLine(width, height)
-    this.drawBars(amplitudes, width, height, barWidth, this.compact ? '#d8d2e6' : '#d7d2e3')
+    this.drawBars(amplitudes, width, height, barWidth, this.compact ? '#e3deea' : '#e7e3eb')
+
+    this.context.save()
+    this.context.beginPath()
+    this.context.rect(0, 0, bufferedProgress * width, height)
+    this.context.clip()
+    this.drawBars(amplitudes, width, height, barWidth, this.compact ? '#cfc8dc' : '#d2ccdc')
+    this.context.restore()
 
     this.context.save()
     this.context.beginPath()

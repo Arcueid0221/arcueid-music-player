@@ -4,6 +4,7 @@ import { createPlayerStore, type PlayerStore } from './core/player-store'
 import { demoPlaylist } from './data/demo-playlist'
 import type { PlayMode, Song } from './domain/types'
 import { LyricRepository } from './services/lyric-repository'
+import { MediaSessionService } from './services/media-session'
 import { PlaybackMemory } from './services/playback-memory'
 import styles from './ui/player.css?inline'
 import { PlayerView } from './ui/player-view'
@@ -46,6 +47,7 @@ export class ArcueidMusicPlayer extends HTMLElement {
       currentIndex: 0,
       currentTime: 0,
       duration: 0,
+      buffered: 0,
       volume,
       muted: volume === 0,
       isPlaying: false,
@@ -61,6 +63,7 @@ export class ArcueidMusicPlayer extends HTMLElement {
       engine,
       new LyricRepository(),
       new PlaybackMemory(this.hasAttribute('remember-playback'), this.getAttribute('memory-key') || undefined),
+      new MediaSessionService(),
     )
 
     this.playerStore = store
@@ -95,6 +98,10 @@ export class ArcueidMusicPlayer extends HTMLElement {
     this.controller?.pause()
   }
 
+  stop(): void {
+    this.controller?.stop()
+  }
+
   toggle(): Promise<void> | void {
     return this.controller?.toggle()
   }
@@ -113,6 +120,10 @@ export class ArcueidMusicPlayer extends HTMLElement {
 
   seek(seconds: number): void {
     this.controller?.seek(seconds)
+  }
+
+  seekBy(seconds: number): void {
+    this.controller?.seekBy(seconds)
   }
 
   setVolume(volume: number): void {

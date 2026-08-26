@@ -2,6 +2,7 @@ import type { PlayMode, PlayerPanel, Song } from '../domain/types'
 import { findActiveLyric } from '../services/lyric-parser'
 import { LyricRepository } from '../services/lyric-repository'
 import { PlaybackMemory } from '../services/playback-memory'
+import { MediaSessionService } from '../services/media-session'
 import { nextIndex, previousIndex } from '../domain/playlist'
 import { AudioEngine } from './audio-engine'
 import type { PlayerStore } from './player-store'
@@ -16,6 +17,7 @@ export class PlayerController {
     private readonly engine: AudioEngine,
     private readonly lyrics: LyricRepository,
     private readonly memory: PlaybackMemory,
+    private readonly mediaSession: MediaSessionService,
   ) {
     this.cleanups.push(
       engine.subscribe((snapshot) => {
@@ -26,8 +28,21 @@ export class PlayerController {
         })
       }),
       engine.onEnded(() => void this.handleEnded()),
-      store.subscribe((state) => this.schedulePersistence(state.playlist[state.currentIndex])),
+      mediaSession.connect({
+        play: () => this.play(),
+        pause: () => this.pause(),
+        next: () => this.next(),
+        previous: () => this.previous(),
+        stop: () => this.stop(),
+        seek: (seconds) => this.seek(seconds),
+        seekBy: (seconds) => this.seekBy(seconds),
+      }),
+      store.subscribe((state) => {
+        this.schedulePersistence(state.playlist[state.currentIndex])
+        this.mediaSession.update(state)
+      }),
     )
+    this.mediaSession.update(store.getState())
   }
 
   initialize(): void {
@@ -64,6 +79,10 @@ export class PlayerController {
     this.engine.pause()
   }
 
+  stop(): void {
+    this.engine.stop()
+  }
+
   toggle(): Promise<void> | void {
     return this.store.getState().isPlaying ? this.pause() : this.play()
   }
@@ -81,7 +100,7 @@ export class PlayerController {
   async select(index: number, autoplay = true): Promise<void> {
     const state = this.store.getState()
     if (index < 0 || index >= state.playlist.length) return
-    this.store.setState({ currentIndex: index, currentTime: 0, activeLyricIndex: -1 })
+    this.store.setState({ currentIndex: index, currentTime: 0, buffered: 0, activeLyricIndex: -1 })
     await this.loadCurrent(autoplay)
   }
 
@@ -91,6 +110,10 @@ export class PlayerController {
 
   seekRatio(ratio: number): void {
     this.seek(this.store.getState().duration * Math.min(Math.max(ratio, 0), 1))
+  }
+
+  seekBy(seconds: number): void {
+    this.seek(this.store.getState().currentTime + seconds)
   }
 
   setVolume(volume: number): void {
@@ -125,6 +148,7 @@ export class PlayerController {
       playlist: [...playlist],
       currentIndex: Math.min(Math.max(currentIndex, 0), Math.max(playlist.length - 1, 0)),
       currentTime: 0,
+      buffered: 0,
       lyrics: [],
       activeLyricIndex: -1,
       error: playlist.length ? undefined : '歌单为空',
@@ -136,6 +160,7 @@ export class PlayerController {
     this.cleanups.forEach((cleanup) => cleanup())
     if (this.persistTimer) window.clearTimeout(this.persistTimer)
     this.lyrics.destroy()
+    this.mediaSession.destroy()
     this.engine.destroy()
   }
 
@@ -145,7 +170,7 @@ export class PlayerController {
     if (!song) return
 
     const request = ++this.lyricRequest
-    this.store.setState({ lyrics: [], activeLyricIndex: -1, error: undefined, isLoading: true })
+    this.store.setState({ lyrics: [], activeLyricIndex: -1, buffered: 0, error: undefined, isLoading: true })
     this.engine.load(song)
     if (restoreTime > 0) void this.engine.seekWhenReady(restoreTime)
 

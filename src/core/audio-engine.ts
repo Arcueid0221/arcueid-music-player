@@ -6,6 +6,12 @@ export function resolveOutputGain(volume: number, muted: boolean): number {
   return muted ? 0 : Math.min(Math.max(volume, 0), 1)
 }
 
+export function resolveBufferedEnd(ranges: Pick<TimeRanges, 'length' | 'end'>, duration: number): number {
+  let end = 0
+  for (let index = 0; index < ranges.length; index += 1) end = Math.max(end, ranges.end(index))
+  return Math.min(end, duration > 0 ? duration : end)
+}
+
 export class AudioEngine {
   private readonly audio = new Audio()
   private readonly listeners = new Set<SnapshotListener>()
@@ -26,9 +32,12 @@ export class AudioEngine {
     this.audio.addEventListener('timeupdate', this.emit)
     this.audio.addEventListener('durationchange', this.emit)
     this.audio.addEventListener('loadedmetadata', this.emit)
+    this.audio.addEventListener('loadeddata', this.emit)
+    this.audio.addEventListener('progress', this.emit)
     this.audio.addEventListener('play', this.emit)
     this.audio.addEventListener('pause', this.emit)
     this.audio.addEventListener('waiting', this.handleWaiting)
+    this.audio.addEventListener('stalled', this.handleWaiting)
     this.audio.addEventListener('playing', this.handlePlaying)
     this.audio.addEventListener('canplay', this.handlePlaying)
     this.audio.addEventListener('ended', this.handleEnded)
@@ -101,6 +110,10 @@ export class AudioEngine {
     return this.audio.currentTime
   }
 
+  get buffered(): number {
+    return resolveBufferedEnd(this.audio.buffered, this.duration)
+  }
+
   getFrequencyData(): Uint8Array | null {
     if (!this.analyser) return null
     const data = new Uint8Array(this.analyser.frequencyBinCount)
@@ -139,6 +152,7 @@ export class AudioEngine {
     return {
       currentTime: this.audio.currentTime,
       duration: this.duration,
+      buffered: this.buffered,
       isPlaying: !this.audio.paused,
       isLoading: this.loading,
       error: this.error,

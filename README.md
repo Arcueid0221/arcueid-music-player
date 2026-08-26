@@ -34,13 +34,13 @@ player.playlist = [
 ] satisfies Song[]
 ```
 
-公开方法包括 `play`、`pause`、`toggle`、`next`、`previous`、`select`、`seek`、`setVolume`、`mute`、`setPlayMode` 与 `getState`。
+公开方法包括 `play`、`pause`、`stop`、`toggle`、`next`、`previous`、`select`、`seek`、`seekBy`、`setVolume`、`mute`、`setPlayMode` 与 `getState`。
 
 ## 分层
 
 - `domain/`：稳定的数据类型与纯播放队列算法。
 - `core/`：音频引擎、状态仓库和播放器编排。
-- `services/`：歌词加载/解析与播放记忆。
+- `services/`：歌词加载/解析、播放记忆与 Media Session 系统媒体适配。
 - `ui/`：只负责 DOM、样式、歌词列表、图标控制和 Canvas 波形。
 - `player-element.ts`：薄薄的一层 Web Component 适配器与公开 API。
 

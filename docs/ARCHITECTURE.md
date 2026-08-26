@@ -25,6 +25,7 @@ arcueid-music-player/
 │   └── lrc/                       # 与音频对应的 LRC 歌词
 ├── src/
 │   ├── core/
+│   │   ├── audio-analysis-source.ts # 向多个波形组件分发共享分析帧
 │   │   ├── audio-engine.ts        # HTMLAudioElement、AudioContext 和音频事件
 │   │   ├── player-controller.ts   # 播放器用例与模块编排
 │   │   └── player-store.ts        # 单一状态源与订阅机制
@@ -38,10 +39,13 @@ arcueid-music-player/
 │   │   ├── lyric-parser.ts        # LRC/网易云元信息解析与二分定位
 │   │   ├── lyric-parser.test.ts   # 歌词解析测试
 │   │   ├── lyric-repository.ts    # 歌词获取、缓存和请求取消
+│   │   ├── media-session.ts       # 系统媒体键、锁屏元数据和位置同步
 │   │   └── playback-memory.ts     # localStorage 播放记忆
 │   ├── ui/
 │   │   ├── components/
+│   │   │   ├── icon.ts            # Lucide 图标适配入口
 │   │   │   ├── lyric-view.ts      # 歌词列表渲染、滚动和点击跳转
+│   │   │   ├── now-playing-rail.ts # 当前歌词与迷你波形底边栏
 │   │   │   └── waveform.ts        # 响应式 Canvas 波形/进度条
 │   │   ├── player-view.ts         # 界面结构、状态映射和事件转发
 │   │   └── player.css             # 完整组件样式和响应式规则
@@ -70,6 +74,7 @@ flowchart TD
     A[AudioEngine\n音频基础设施]
     LR[LyricRepository\n歌词获取与缓存]
     PM[PlaybackMemory\n播放记忆]
+    MS[MediaSessionService\n系统媒体适配]
     D[Domain\n类型与纯算法]
 
     E --> V
@@ -79,6 +84,7 @@ flowchart TD
     C --> A
     C --> LR
     C --> PM
+    C --> MS
     C --> D
     V --> S
     V --> C
@@ -132,7 +138,8 @@ AudioEngine 封装浏览器音频 API：
 - 统一处理 `timeupdate`、`waiting`、`playing`、`ended`、`error` 等媒体事件；
 - 暴露播放、暂停、停止、跳转、音量和静音方法；
 - 在用户播放时延迟创建 `AudioContext`，避免浏览器自动播放限制；
-- 提供 Analyser 频域数据给波形组件；
+- 通过 `GainNode` 控制应用内音量，兼容 Safari/iOS Safari；
+- 提供 Analyser 时域数据和缓冲进度给共享分析源；
 - 通过 `seekWhenReady()` 安全恢复记忆进度；
 - 销毁时关闭音频上下文并释放订阅。
 
@@ -143,7 +150,7 @@ Engine 发布 `AudioSnapshot`，但不直接更新 UI，Controller 决定如何�
 Store 保存完整 `PlayerState`：
 
 - 歌单和当前索引；
-- 当前时间、总时长、音量和静音；
+- 当前时间、总时长、缓冲位置、音量和静音；
 - 播放、加载和错误状态；
 - 播放模式；
 - 当前打开的歌词/歌单面板；
@@ -170,6 +177,8 @@ Store 保存完整 `PlayerState`：
 - `lyric-repository.ts` 决定歌词来自内联数组、内联 LRC 还是 URL，同时负责缓存与 AbortController 请求取消。
 
 `playback-memory.ts` 单独封装 localStorage。存储不可用或内容损坏时只降级，不影响基础播放。
+
+`media-session.ts` 单独封装浏览器 Media Session API。Controller 只提供播放、暂停、切歌和跳转用例，Service 负责系统媒体键、锁屏元数据、播放状态与位置同步；不支持该 API 的浏览器自动降级为空实现。
 
 未来接入云端 API、IndexedDB 或用户本地文件时，应继续采用类似 Service/Provider，而不是把 fetch 写进自定义元素。
 
@@ -334,11 +343,13 @@ player.playlist = [
 ```text
 play()
 pause()
+stop()
 toggle()
 next()
 previous()
 select(index)
 seek(seconds)
+seekBy(seconds)
 setVolume(volume)
 mute()
 setPlayMode(mode)
@@ -352,7 +363,7 @@ getState()
 | 新功能 | 推荐位置 | 原因 |
 | --- | --- | --- |
 | 云端歌单/搜索 | `services/playlist-provider.ts` | 网络数据源不属于组件或 AudioEngine |
-| Media Session | `services/media-session.ts`，由 Controller 驱动 | 隔离浏览器系统媒体 API |
+| Media Session | 已实现于 `services/media-session.ts`，由 Controller 驱动 | 隔离浏览器系统媒体 API |
 | 队列增删/排序 | `domain/queue.ts` + Controller 用例 | 先定义纯规则，再由业务层编排 |
 | 深色/浅色主题 | `player.css` token + Element 属性适配 | 业务逻辑不感知颜色 |
 | 专辑封面 | 扩展 `Song.cover`，由 View 渲染 | 数据契约和表现分开 |
@@ -368,7 +379,7 @@ getState()
 - 目前只有纯逻辑单元测试，尚缺 Controller 状态机和真实浏览器自动化测试文件；
 - Store 是全量快照订阅，歌单很大或更新非常频繁时可增加 selector；
 - 公共事件 API 尚未稳定，外部集成目前主要依靠实例方法和 `getState()`；
-- 音频跨域、Media Session、缓冲进度和错误重试仍在路线图中；
-- 当前没有封面资源与图标库，视觉上采用文字控制和真实波形，避免假资源占位。
+- 音频跨域、网络错误重试和无效音频跳过仍在路线图中；
+- 已接入 Lucide 图标库；演示歌单尚未提供专辑封面资源。
 
 这些限制都可以在现有边界内逐步解决，不需要再次推翻组件结构。后续阶段计划见 [`ROADMAP.md`](./ROADMAP.md)。
