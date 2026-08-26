@@ -28,7 +28,11 @@ describe('AudioEngine output graph', () => {
       paused = true
       duration = 100
       currentTime = 0
+      readyState = 4
+      HAVE_FUTURE_DATA = 3
       error = null
+      buffered = { length: 0, end: () => 0 }
+      fastSeek = vi.fn((time: number) => { this.currentTime = time })
 
       addEventListener(): void {}
       removeAttribute(): void {}
@@ -78,8 +82,12 @@ describe('AudioEngine output graph', () => {
     engine.setMuted(false)
     expect(fakeGain.gain.value).toBe(0.35)
 
+    engine.seek(42)
+
     const internals = engine as unknown as { audio: FakeAudio }
     expect(internals.audio.preload).toBe('auto')
+    expect(internals.audio.fastSeek).toHaveBeenCalledWith(42)
+    expect(internals.audio.currentTime).toBe(42)
     expect(internals.audio.volume).toBe(1)
     expect(internals.audio.muted).toBe(false)
     engine.destroy()

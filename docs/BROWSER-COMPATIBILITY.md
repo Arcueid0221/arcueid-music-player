@@ -20,7 +20,8 @@
 
 ## Safari 拖动与媒体 Range 请求
 
-- 波形拖动期间只更新视觉预览，松手后只写入一次 `currentTime`，避免 Safari 为连续 seek 重复发起媒体请求。
+- 波形拖动期间，光标、紫色已播放波形和当前时间共同使用视觉预览值；松手后只提交一次 seek，避免 Safari 为连续跳转重复发起媒体请求。
+- 支持 `fastSeek()` 时优先使用浏览器的快速媒体跳转；seek 过程本身不会立即切换为“载入中”，只有跳转完成后仍缺少可播放数据才显示等待状态。
 - 当前歌曲使用 `preload="auto"`，但 iOS Safari 可能根据省流量、低电量和内存策略限制预加载。
 - 跳到尚未缓冲的位置时，任何浏览器都必须继续读取音频数据，无法由播放器完全消除。部署服务器应正确返回 `Accept-Ranges: bytes`、`Content-Length`、稳定的 `Content-Type`（如 `audio/mpeg`），并支持 `206 Partial Content`；否则 Safari 可能重新下载整首音频。
 - `waiting` 状态延迟 180ms 后才显示，避免已缓冲 seek 产生一闪而过的“载入中”。

@@ -23,6 +23,7 @@ export class AudioEngine {
   private error?: string
   private loading = false
   private loadingTimer?: ReturnType<typeof setTimeout>
+  private seeking = false
   private volume = 0.8
   private muted = false
 
@@ -42,6 +43,8 @@ export class AudioEngine {
     this.audio.addEventListener('pause', this.emit)
     this.audio.addEventListener('waiting', this.handleWaiting)
     this.audio.addEventListener('stalled', this.handleWaiting)
+    this.audio.addEventListener('seeking', this.handleSeeking)
+    this.audio.addEventListener('seeked', this.handleSeeked)
     this.audio.addEventListener('playing', this.handlePlaying)
     this.audio.addEventListener('canplay', this.handlePlaying)
     this.audio.addEventListener('ended', this.handleEnded)
@@ -50,6 +53,7 @@ export class AudioEngine {
 
   load(song: Song): void {
     this.clearLoadingTimer()
+    this.seeking = false
     this.error = undefined
     this.loading = true
     if (song.crossOrigin === undefined) this.audio.removeAttribute('crossorigin')
@@ -71,12 +75,14 @@ export class AudioEngine {
 
   pause(): void {
     this.clearLoadingTimer()
+    this.seeking = false
     this.loading = false
     this.audio.pause()
   }
 
   stop(): void {
     this.clearLoadingTimer()
+    this.seeking = false
     this.loading = false
     this.audio.pause()
     this.audio.currentTime = 0
@@ -85,6 +91,7 @@ export class AudioEngine {
 
   clear(): void {
     this.clearLoadingTimer()
+    this.seeking = false
     this.audio.pause()
     this.audio.removeAttribute('src')
     this.audio.load()
@@ -96,7 +103,10 @@ export class AudioEngine {
   seek(seconds: number): void {
     if (!Number.isFinite(seconds)) return
     const duration = this.duration
-    this.audio.currentTime = Math.min(Math.max(seconds, 0), duration || seconds)
+    const target = Math.min(Math.max(seconds, 0), duration || seconds)
+    const fastSeek = (this.audio as HTMLAudioElement & { fastSeek?: (time: number) => void }).fastSeek
+    if (typeof fastSeek === 'function') fastSeek.call(this.audio, target)
+    else this.audio.currentTime = target
     this.emit()
   }
 
@@ -162,6 +172,7 @@ export class AudioEngine {
 
   destroy(): void {
     this.clearLoadingTimer()
+    this.seeking = false
     this.audio.pause()
     this.audio.removeAttribute('src')
     this.audio.load()
@@ -187,7 +198,7 @@ export class AudioEngine {
   }
 
   private readonly handleWaiting = (): void => {
-    if (this.loadingTimer) return
+    if (this.seeking || this.loadingTimer) return
     // Safari can emit a very short waiting event while completing an already
     // buffered seek. Avoid flashing “载入中” unless the wait is observable.
     this.loadingTimer = globalThis.setTimeout(() => {
@@ -200,8 +211,26 @@ export class AudioEngine {
 
   private readonly handlePlaying = (): void => {
     this.clearLoadingTimer()
+    this.seeking = false
     this.loading = false
     this.error = undefined
+    this.emit()
+  }
+
+  private readonly handleSeeking = (): void => {
+    this.seeking = true
+    this.clearLoadingTimer()
+    this.loading = false
+    this.emit()
+  }
+
+  private readonly handleSeeked = (): void => {
+    this.seeking = false
+    if (!this.audio.paused && this.audio.readyState < this.audio.HAVE_FUTURE_DATA) {
+      this.handleWaiting()
+      return
+    }
+    this.loading = false
     this.emit()
   }
 
@@ -211,6 +240,7 @@ export class AudioEngine {
 
   private readonly handleError = (): void => {
     this.clearLoadingTimer()
+    this.seeking = false
     this.loading = false
     this.error = this.audio.error?.message || '音频加载失败'
     this.emit()

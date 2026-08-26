@@ -2,6 +2,10 @@ import type { AudioAnalysisFrame } from '../../core/audio-analysis-source'
 
 const FALLBACK_AMPLITUDES = [0.08, 0.11, 0.07, 0.13, 0.09, 0.06]
 
+export function resolveWaveformProgress(actual: number, preview: number | null): number {
+  return Math.min(Math.max(preview ?? actual, 0), 1)
+}
+
 export function sampleAmplitudes(samples: Uint8Array | null, count: number): number[] {
   if (count <= 0) return []
   if (!samples || samples.length < 2) {
@@ -29,6 +33,7 @@ export class WaveformRenderer {
   private readonly compact: boolean
   private frame: AudioAnalysisFrame = { samples: null, progress: 0, bufferedProgress: 0 }
   private pointerRatio: number | null = null
+  private previewRatio: number | null = null
 
   constructor(private readonly canvas: HTMLCanvasElement, options: WaveformOptions = {}) {
     const context = canvas.getContext('2d')
@@ -47,6 +52,12 @@ export class WaveformRenderer {
 
   setPointerRatio(ratio: number | null): void {
     this.pointerRatio = ratio === null ? null : Math.min(Math.max(ratio, 0), 1)
+    this.draw()
+  }
+
+  setProgressPreview(ratio: number | null): void {
+    this.previewRatio = ratio === null ? null : Math.min(Math.max(ratio, 0), 1)
+    this.pointerRatio = this.previewRatio
     this.draw()
   }
 
@@ -72,7 +83,7 @@ export class WaveformRenderer {
     const preferredGap = 3
     const count = Math.max(2, Math.floor((width + preferredGap) / (barWidth + preferredGap)))
     const amplitudes = sampleAmplitudes(this.frame.samples, count)
-    const progress = Math.min(Math.max(this.frame.progress, 0), 1)
+    const progress = resolveWaveformProgress(this.frame.progress, this.previewRatio)
     const bufferedProgress = Math.min(Math.max(this.frame.bufferedProgress, progress), 1)
 
     this.context.clearRect(0, 0, width, height)

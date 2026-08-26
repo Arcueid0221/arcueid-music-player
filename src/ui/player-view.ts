@@ -37,6 +37,7 @@ export class PlayerView {
   private lastMuted?: boolean
   private lastPanel?: PlayerState['panel']
   private draggingWaveform = false
+  private waveformPreviewRatio: number | null = null
   private draggedSongIndex = -1
   private queueQuery = ''
 
@@ -313,7 +314,13 @@ export class PlayerView {
     }
     const previewPointer = (event: PointerEvent): number => {
       const ratio = ratioFromPointer(event)
-      this.waveform.setPointerRatio(ratio)
+      if (this.draggingWaveform) {
+        this.waveformPreviewRatio = ratio
+        this.waveform.setProgressPreview(ratio)
+        this.renderSeekPosition(ratio)
+      } else {
+        this.waveform.setPointerRatio(ratio)
+      }
       return ratio
     }
 
@@ -334,10 +341,15 @@ export class PlayerView {
       this.draggingWaveform = false
       if (this.waveformControl.hasPointerCapture(event.pointerId)) this.waveformControl.releasePointerCapture(event.pointerId)
       this.controller.seekRatio(ratio)
+      this.waveformPreviewRatio = null
+      this.waveform.setProgressPreview(null)
     }, { signal: this.eventController.signal })
     this.waveformControl.addEventListener('pointercancel', () => {
       this.draggingWaveform = false
+      this.waveformPreviewRatio = null
+      this.waveform.setProgressPreview(null)
       this.waveform.setPointerRatio(null)
+      this.renderSeekPosition(null)
     }, { signal: this.eventController.signal })
     this.waveformControl.addEventListener('pointerleave', () => {
       if (!this.draggingWaveform) this.waveform.setPointerRatio(null)
@@ -376,8 +388,10 @@ export class PlayerView {
     this.errorMessage.textContent = state.recoveryMessage ?? state.error ?? ''
     this.retryButton.hidden = !state.canRetry
     this.skipButton.hidden = !state.canSkip
-    this.currentTime.textContent = formatTime(state.currentTime)
-    this.duration.textContent = formatTime(state.duration || song?.duration || 0)
+    const duration = state.duration || song?.duration || 0
+    const displayTime = this.waveformPreviewRatio === null ? state.currentTime : this.waveformPreviewRatio * duration
+    this.currentTime.textContent = formatTime(displayTime)
+    this.duration.textContent = formatTime(duration)
 
     if (this.lastPlaying !== state.isPlaying) {
       setButtonIcon(this.playButton, state.isPlaying ? 'pause' : 'play', state.isPlaying ? '暂停' : '播放')
@@ -400,9 +414,9 @@ export class PlayerView {
     this.volumeInput.style.setProperty('--range-progress', `${state.volume * 100}%`)
     this.volumeInput.setAttribute('aria-valuetext', `${state.muted ? '已静音，' : ''}音量 ${Math.round(state.volume * 100)}%`)
 
-    const progress = state.duration > 0 ? state.currentTime / state.duration : 0
+    const progress = duration > 0 ? displayTime / duration : 0
     this.waveformControl.setAttribute('aria-valuenow', String(Math.round(progress * 100)))
-    this.waveformControl.setAttribute('aria-valuetext', `${formatTime(state.currentTime)} / ${formatTime(state.duration)}`)
+    this.waveformControl.setAttribute('aria-valuetext', `${formatTime(displayTime)} / ${formatTime(duration)}`)
 
     if (state.isPlaying) this.analysisSource.start()
     else this.analysisSource.stop()
@@ -521,6 +535,17 @@ export class PlayerView {
     this.queueContainer.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => {
       element.classList.remove('is-dragging', 'is-drop-target')
     })
+  }
+
+  private renderSeekPosition(ratio: number | null): void {
+    const state = this.store.getState()
+    const song = state.playlist[state.currentIndex]
+    const duration = state.duration || song?.duration || 0
+    const time = ratio === null ? state.currentTime : ratio * duration
+    const progress = duration > 0 ? time / duration : 0
+    this.currentTime.textContent = formatTime(time)
+    this.waveformControl.setAttribute('aria-valuenow', String(Math.round(progress * 100)))
+    this.waveformControl.setAttribute('aria-valuetext', `${formatTime(time)} / ${formatTime(duration)}`)
   }
 
   private get<T extends Element = HTMLElement>(selector: string): T {
