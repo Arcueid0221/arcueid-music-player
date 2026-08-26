@@ -5,7 +5,7 @@
 
 ## 实施状态
 
-- P1 控件稳定：已完成。播放控制使用 Lucide 图标和固定尺寸布局，静音切换不再挤压音量条。
+- P1 控件稳定：已完成。播放控制使用 Lucide 图标和固定尺寸布局，静音切换不再挤压音量条；输出音量改由 Web Audio `GainNode` 控制，规避 Safari 在媒体元素接入 `AudioContext` 后忽略 `HTMLMediaElement.volume` 的问题。
 - P2 波形进度一体化：已完成。主轨切换为时域采样、完整未播放轨与进度裁剪绘制，并支持指针拖动和键盘跳转。
 - P3 歌词底边栏：已完成。`NowPlayingRail` 显示当前歌词/歌曲回退，并与主波形共享 `AudioAnalysisSource`。
 - P4 质量与扩展：已完成本轮自动化、桌面 Chromium 与 390px 窄屏验证；真实 macOS/iOS Safari 设备回归仍需人工执行。

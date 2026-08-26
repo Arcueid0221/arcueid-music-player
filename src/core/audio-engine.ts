@@ -2,19 +2,26 @@ import type { AudioSnapshot, Song } from '../domain/types'
 
 type SnapshotListener = (snapshot: AudioSnapshot) => void
 
+export function resolveOutputGain(volume: number, muted: boolean): number {
+  return muted ? 0 : Math.min(Math.max(volume, 0), 1)
+}
+
 export class AudioEngine {
   private readonly audio = new Audio()
   private readonly listeners = new Set<SnapshotListener>()
   private readonly endedListeners = new Set<() => void>()
   private audioContext?: AudioContext
   private analyser?: AnalyserNode
+  private gain?: GainNode
   private source?: MediaElementAudioSourceNode
   private error?: string
   private loading = false
+  private volume = 0.8
+  private muted = false
 
   constructor() {
     this.audio.preload = 'metadata'
-    this.audio.volume = 0.8
+    this.audio.volume = this.volume
 
     this.audio.addEventListener('timeupdate', this.emit)
     this.audio.addEventListener('durationchange', this.emit)
@@ -77,11 +84,13 @@ export class AudioEngine {
   }
 
   setVolume(volume: number): void {
-    this.audio.volume = Math.min(Math.max(volume, 0), 1)
+    this.volume = Math.min(Math.max(volume, 0), 1)
+    this.applyOutputGain()
   }
 
   setMuted(muted: boolean): void {
-    this.audio.muted = muted
+    this.muted = muted
+    this.applyOutputGain()
   }
 
   get duration(): number {
@@ -166,12 +175,35 @@ export class AudioEngine {
     if (!this.audioContext) {
       this.audioContext = new AudioContext()
       this.analyser = this.audioContext.createAnalyser()
+      this.gain = this.audioContext.createGain()
       this.analyser.fftSize = 256
       this.analyser.smoothingTimeConstant = 0.78
       this.source = this.audioContext.createMediaElementSource(this.audio)
       this.source.connect(this.analyser)
-      this.analyser.connect(this.audioContext.destination)
+      this.analyser.connect(this.gain)
+      this.gain.connect(this.audioContext.destination)
+
+      // Safari currently ignores HTMLMediaElement.volume for media routed
+      // through an AudioContext, and iOS locks per-element media volume.
+      // Keep the element at unity and attenuate the Web Audio output instead.
+      this.audio.volume = 1
+      this.audio.muted = false
+      this.applyOutputGain()
     }
     if (this.audioContext.state === 'suspended') await this.audioContext.resume()
+  }
+
+  private applyOutputGain(): void {
+    const output = resolveOutputGain(this.volume, this.muted)
+    if (this.gain && this.audioContext) {
+      this.gain.gain.cancelScheduledValues(this.audioContext.currentTime)
+      this.gain.gain.setValueAtTime(output, this.audioContext.currentTime)
+      return
+    }
+
+    // Native media volume remains the lightweight fallback before the audio
+    // graph is created and on browsers where it behaves correctly.
+    this.audio.volume = this.volume
+    this.audio.muted = this.muted
   }
 }
