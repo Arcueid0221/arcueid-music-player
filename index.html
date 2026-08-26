@@ -25,7 +25,12 @@
     <main class="demo-copy">
       <p>一个小而清晰的 Web Components 音乐播放器：播放内核、状态、歌词服务与界面互不耦合。</p>
     </main>
-    <arcueid-music-player playlist-mode="readonly" remember-playback></arcueid-music-player>
+    <arcueid-music-player
+      playlist-mode="readonly"
+      remember-playback
+      remember-position
+      dock-side="auto"
+    ></arcueid-music-player>
     <script type="module" src="/src/index.ts"></script>
   </body>
 </html>

@@ -6,6 +6,7 @@ export interface Track {
   cover?: string
   audioUrl: string
   lyricUrl?: string
+  crossOrigin?: '' | 'anonymous' | 'use-credentials'
   duration?: number
 }
 

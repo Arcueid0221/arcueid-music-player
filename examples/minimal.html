@@ -13,6 +13,9 @@
       const instance = createMusicPlayer({
         target: document.querySelector('#player-target'),
         theme: 'system',
+        playlistMode: 'readonly',
+        dockSide: 'auto',
+        rememberPosition: true,
         playlist: [{ id: 'demo', title: 'Demo', src: '/audio/demo.mp3' }],
         onReady: (player) => console.info('player ready', player),
       })

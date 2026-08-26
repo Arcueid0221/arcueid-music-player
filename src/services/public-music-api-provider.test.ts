@@ -12,6 +12,7 @@ describe('PublicMusicApiProvider', () => {
         audioUrl: './audio/song.mp3',
         lyricUrl: './lyrics/song.lrc',
         cover: './covers/song.jpg',
+        crossOrigin: 'anonymous',
       }],
     } }, 'https://blog.example/api/music/playlists/default')).toEqual([
       expect.objectContaining({
@@ -19,6 +20,7 @@ describe('PublicMusicApiProvider', () => {
         src: 'https://blog.example/api/music/playlists/audio/song.mp3',
         lyricsUrl: 'https://blog.example/api/music/playlists/lyrics/song.lrc',
         artwork: [{ src: 'https://blog.example/api/music/playlists/covers/song.jpg' }],
+        crossOrigin: 'anonymous',
       }),
     ])
   })

@@ -43,6 +43,10 @@ export function parsePublicTrack(value: unknown, baseUrl: string, index = 0): So
     ? track.id
     : `${audioUrl}#${index}`
   const cover = optionalString(track.cover)
+  const lyricsUrl = optionalString(track.lyricUrl) ?? optionalString(track.lyricsUrl)
+  const crossOrigin = track.crossOrigin === '' || track.crossOrigin === 'anonymous' || track.crossOrigin === 'use-credentials'
+    ? track.crossOrigin
+    : undefined
   const duration = typeof track.duration === 'number' && Number.isFinite(track.duration)
     ? Math.max(track.duration, 0)
     : undefined
@@ -53,10 +57,9 @@ export function parsePublicTrack(value: unknown, baseUrl: string, index = 0): So
     artist: optionalString(track.artist),
     album: optionalString(track.album),
     src: resolveResource(audioUrl, baseUrl),
-    lyricsUrl: optionalString(track.lyricUrl) ?? optionalString(track.lyricsUrl)
-      ? resolveResource((optionalString(track.lyricUrl) ?? optionalString(track.lyricsUrl))!, baseUrl)
-      : undefined,
+    lyricsUrl: lyricsUrl ? resolveResource(lyricsUrl, baseUrl) : undefined,
     artwork: cover ? [{ src: resolveResource(cover, baseUrl) }] : undefined,
+    crossOrigin,
     duration,
   }
 }
