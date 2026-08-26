@@ -64,4 +64,6 @@ await player.loadPlaylist(new FilePlaylistProvider(file), 'append')
 
 完整的分层、拆分映射和功能增减说明见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)，后续扩展原则和阶段计划见 [docs/ROADMAP.md](./docs/ROADMAP.md)。
 
+面向博客部署时，播放器定位为访客端只读播放组件；歌曲、歌单、导入和永久排序由宿主后台负责。具体职责、数据模型与 API 边界见 [博客音乐架构](./docs/BLOG-MUSIC-ARCHITECTURE.md)。
+
 发布与升级说明见 [浏览器兼容策略](./docs/BROWSER-COMPATIBILITY.md) 和 [版本迁移说明](./docs/MIGRATION.md)。本轮功能验收与截图证据见 [最终浏览器审核](./docs/FINAL-BROWSER-AUDIT.md)；开发环境还可以打开 `/browser-audit.html` 复现深色主题、故障恢复与逐字歌词场景。
