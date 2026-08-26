@@ -14,6 +14,7 @@ npm run build
 ```html
 <arcueid-music-player
   play-mode="order"
+  playlist-mode="readonly"
   volume="0.8"
   theme="system"
   remember-playback
@@ -41,16 +42,26 @@ player.playlist = [
 ```ts
 import {
   ArrayPlaylistProvider,
-  FilePlaylistProvider,
   JsonPlaylistProvider,
 } from 'arcueid-music-player'
 
 await player.loadPlaylist(new JsonPlaylistProvider('/api/playlist.json'))
 await player.loadPlaylist(new ArrayPlaylistProvider(moreSongs), 'append')
-await player.loadPlaylist(new FilePlaylistProvider(file), 'append')
 ```
 
-公开方法包括 `play`、`pause`、`stop`、`toggle`、`next`、`previous`、`select`、`seek`、`seekBy`、`setVolume`、`mute`、`setPlayMode`、`loadPlaylist`、`usePlaylist`、`addSongs`、`removeSong`、`moveSong` 与 `getState`。
+`playlist-mode` 默认是 `readonly`：访客仍可浏览、搜索和选择歌曲，但界面不提供 JSON 文件导入、删除或排序。需要保留旧版队列管理界面用于本地演示或 Admin 工具时，显式设置 `playlist-mode="editable"`。底层 `FilePlaylistProvider` 与队列修改 API 继续保留给宿主集成，不会在只读界面中暴露。
+
+程序化挂载使用同一配置：
+
+```ts
+createMusicPlayer({
+  target: document.querySelector('#music-player')!,
+  playlistMode: 'readonly',
+  playlist: songs,
+})
+```
+
+公开方法包括 `play`、`pause`、`stop`、`toggle`、`next`、`previous`、`select`、`seek`、`seekBy`、`setVolume`、`mute`、`setPlayMode`、`loadPlaylist`、`usePlaylist`、`addSongs`、`removeSong`、`moveSong` 与 `getState`。这些方法供宿主应用配置本地实例；只读模式不会把修改入口展示给访客，也不会向博客后端写入数据。
 
 此外支持 `setTheme`、`setLyricOffset`、`retry` 和 `skipFailed`，并派发 `ready`、`trackchange`、`playbackchange` 与 `error` 事件。需要程序化挂载或多实例时使用 `createMusicPlayer()`；最小示例见 [examples/minimal.html](./examples/minimal.html)。SSR 应在客户端生命周期内动态导入本包。
 

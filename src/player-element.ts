@@ -2,7 +2,7 @@ import { AudioEngine } from './core/audio-engine'
 import { PlayerController } from './core/player-controller'
 import { createPlayerStore, type PlayerStore } from './core/player-store'
 import { demoPlaylist } from './data/demo-playlist'
-import type { PlayMode, PlayerState, PlayerTheme, Song } from './domain/types'
+import type { PlaylistMode, PlayMode, PlayerState, PlayerTheme, Song } from './domain/types'
 import { LyricRepository } from './services/lyric-repository'
 import { MediaSessionService } from './services/media-session'
 import { PlaybackLifecycleService } from './services/playback-lifecycle'
@@ -19,8 +19,12 @@ const PLAY_MODES: PlayMode[] = ['order', 'single', 'random']
 const PLAYER_THEMES: PlayerTheme[] = ['light', 'dark', 'system']
 const HTMLElementBase = (typeof HTMLElement === 'undefined' ? class {} : HTMLElement) as typeof HTMLElement
 
+export function resolvePlaylistMode(value: string | null): PlaylistMode {
+  return value === 'editable' ? 'editable' : 'readonly'
+}
+
 export class ArcueidMusicPlayer extends HTMLElementBase {
-  static readonly observedAttributes = ['play-mode', 'volume', 'remember-playback', 'playlist-src', 'theme']
+  static readonly observedAttributes = ['play-mode', 'playlist-mode', 'volume', 'remember-playback', 'playlist-src', 'theme']
 
   private playerStore?: PlayerStore
   private controller?: PlayerController
@@ -47,6 +51,8 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     this.themeMedia?.addEventListener('change', this.handleThemeChange)
 
     const playMode = this.readPlayMode()
+    const playlistMode = resolvePlaylistMode(this.getAttribute('playlist-mode'))
+    if (this.getAttribute('playlist-mode') !== playlistMode) this.setAttribute('playlist-mode', playlistMode)
     const volume = this.readVolume()
     const root = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
     root.replaceChildren()
@@ -85,7 +91,7 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
 
     this.playerStore = store
     this.controller = controller
-    this.view = new PlayerView(root, store, controller, engine)
+    this.view = new PlayerView(root, store, controller, engine, playlistMode)
     this.publicEventsCleanup = store.subscribe((state, previous) => this.emitPublicEvents(state, previous))
     this.addEventListener('keydown', this.handleKeydown)
     controller.initialize()
@@ -112,6 +118,7 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     if (name === 'play-mode' && newValue && PLAY_MODES.includes(newValue as PlayMode)) {
       this.controller.setPlayMode(newValue as PlayMode)
     }
+    if (name === 'playlist-mode') this.view?.setPlaylistMode(resolvePlaylistMode(newValue))
     if (name === 'volume' && newValue !== null) this.controller.setVolume(this.readVolume())
     if (name === 'playlist-src' && newValue) {
       void this.controller.loadPlaylist(new JsonPlaylistProvider(newValue)).catch(() => undefined)

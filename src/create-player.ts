@@ -1,10 +1,11 @@
-import type { PlayerTheme, Song } from './domain/types'
+import type { PlaylistMode, PlayerTheme, Song } from './domain/types'
 import { ArcueidMusicPlayer } from './player-element'
 
 export interface CreateMusicPlayerOptions {
   target: ParentNode
   playlist?: readonly Song[]
   playMode?: 'order' | 'single' | 'random'
+  playlistMode?: PlaylistMode
   theme?: PlayerTheme
   volume?: number
   rememberPlayback?: boolean
@@ -25,6 +26,7 @@ export function createMusicPlayer(options: CreateMusicPlayerOptions): MusicPlaye
   const element = document.createElement('arcueid-music-player') as ArcueidMusicPlayer
   if (options.playlist) element.playlist = [...options.playlist]
   if (options.playMode) element.setAttribute('play-mode', options.playMode)
+  if (options.playlistMode) element.setAttribute('playlist-mode', options.playlistMode)
   if (options.theme) element.setAttribute('theme', options.theme)
   if (options.volume !== undefined) element.setAttribute('volume', String(options.volume))
   if (options.rememberPlayback) {

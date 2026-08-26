@@ -2,7 +2,7 @@ import { AudioAnalysisSource } from '../core/audio-analysis-source'
 import type { AudioEngine } from '../core/audio-engine'
 import type { PlayerController } from '../core/player-controller'
 import type { PlayerStore } from '../core/player-store'
-import type { PlayMode, PlayerState, Song } from '../domain/types'
+import type { PlaylistMode, PlayMode, PlayerState, Song } from '../domain/types'
 import { FilePlaylistProvider } from '../services/playlist-provider'
 import { createPlayerIcon, setButtonIcon, type PlayerIcon } from './components/icon'
 import { LyricView } from './components/lyric-view'
@@ -65,6 +65,7 @@ export class PlayerView {
   private readonly lyricOffset: HTMLElement
   private readonly queueSearch: HTMLInputElement
   private readonly queueFeedback: HTMLElement
+  private readonly importPlaylistButton: HTMLButtonElement
   private readonly playlistFileInput: HTMLInputElement
   private readonly waveformControl: HTMLElement
 
@@ -73,6 +74,7 @@ export class PlayerView {
     private readonly store: PlayerStore,
     private readonly controller: PlayerController,
     engine: AudioEngine,
+    private playlistMode: PlaylistMode,
   ) {
     root.innerHTML += `
       <section class="player-card" aria-label="音乐播放器">
@@ -137,8 +139,8 @@ export class PlayerView {
           </div>
           <div class="queue-toolbar" hidden>
             <input class="queue-search" type="search" placeholder="搜索歌曲、歌手或专辑" aria-label="搜索播放队列" />
-            <button class="icon-button compact-control" type="button" data-action="import-playlist"></button>
-            <input class="playlist-file-input" type="file" accept="application/json,.json" hidden />
+            <button class="icon-button compact-control playlist-management" type="button" data-action="import-playlist"></button>
+            <input class="playlist-file-input playlist-management" type="file" accept="application/json,.json" hidden />
           </div>
           <div class="lyric-toolbar" hidden aria-label="歌词时间校准">
             <button class="icon-button compact-control" type="button" data-action="lyric-earlier"></button>
@@ -191,6 +193,7 @@ export class PlayerView {
     this.lyricOffset = this.get('.lyric-offset')
     this.queueSearch = this.get('.queue-search')
     this.queueFeedback = this.get('.queue-feedback')
+    this.importPlaylistButton = this.get('[data-action="import-playlist"]')
     this.playlistFileInput = this.get('.playlist-file-input')
     this.waveformControl = this.get('.waveform-control')
 
@@ -225,6 +228,14 @@ export class PlayerView {
     this.render(store.getState())
   }
 
+  setPlaylistMode(mode: PlaylistMode): void {
+    if (this.playlistMode === mode) return
+    this.playlistMode = mode
+    this.resetQueueDragState()
+    this.lastPlaylist = undefined
+    this.render(this.store.getState())
+  }
+
   destroy(): void {
     this.eventController.abort()
     this.unsubscribe()
@@ -244,7 +255,7 @@ export class PlayerView {
       if (action === 'next') void this.controller.next()
       if (action === 'mode') this.controller.cyclePlayMode()
       if (action === 'mute') this.controller.toggleMuted()
-      if (action === 'import-playlist') this.playlistFileInput.click()
+      if (action === 'import-playlist' && this.playlistMode === 'editable') this.playlistFileInput.click()
       if (action === 'retry') void this.controller.retry()
       if (action === 'skip-failed') void this.controller.skipFailed()
       if (action === 'lyric-earlier') this.controller.setLyricOffset(this.store.getState().lyricOffsetMs - 500)
@@ -253,9 +264,9 @@ export class PlayerView {
       const songIndex = Number(target.closest<HTMLButtonElement>('[data-song-index]')?.dataset.songIndex)
       if (Number.isInteger(songIndex)) {
         if (action === 'select-song') void this.controller.select(songIndex)
-        if (action === 'remove-song') void this.controller.removeSong(songIndex)
-        if (action === 'move-song-up') this.controller.moveSong(songIndex, songIndex - 1)
-        if (action === 'move-song-down') this.controller.moveSong(songIndex, songIndex + 1)
+        if (this.playlistMode === 'editable' && action === 'remove-song') void this.controller.removeSong(songIndex)
+        if (this.playlistMode === 'editable' && action === 'move-song-up') this.controller.moveSong(songIndex, songIndex - 1)
+        if (this.playlistMode === 'editable' && action === 'move-song-down') this.controller.moveSong(songIndex, songIndex + 1)
       }
       if (action === 'close-panel') {
         const panel = this.store.getState().panel
@@ -275,11 +286,15 @@ export class PlayerView {
     this.playlistFileInput.addEventListener('change', () => {
       const file = this.playlistFileInput.files?.[0]
       this.playlistFileInput.value = ''
-      if (!file) return
+      if (!file || this.playlistMode !== 'editable') return
       void this.controller.loadPlaylist(new FilePlaylistProvider(file), 'append').catch(() => undefined)
     }, { signal: this.eventController.signal })
 
     this.queueContainer.addEventListener('dragstart', (event) => {
+      if (this.playlistMode !== 'editable') {
+        event.preventDefault()
+        return
+      }
       const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-queue-index]') : null
       this.draggedSongIndex = Number(item?.dataset.queueIndex ?? -1)
       item?.classList.add('is-dragging')
@@ -287,6 +302,7 @@ export class PlayerView {
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
     }, { signal: this.eventController.signal })
     this.queueContainer.addEventListener('dragover', (event) => {
+      if (this.playlistMode !== 'editable') return
       const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-queue-index]') : null
       if (!item) return
       event.preventDefault()
@@ -294,6 +310,7 @@ export class PlayerView {
       item.classList.add('is-drop-target')
     }, { signal: this.eventController.signal })
     this.queueContainer.addEventListener('drop', (event) => {
+      if (this.playlistMode !== 'editable') return
       const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-queue-index]') : null
       const targetIndex = Number(item?.dataset.queueIndex ?? -1)
       event.preventDefault()
@@ -371,8 +388,9 @@ export class PlayerView {
 
   private render(state: PlayerState): void {
     const song = state.playlist[state.currentIndex]
-    this.title.textContent = song?.title ?? '等待添加歌曲'
-    this.artist.textContent = [song?.artist, song?.album].filter(Boolean).join(' · ') || '未知艺术家'
+    this.title.textContent = song?.title
+      ?? (state.isPlaylistLoading ? '正在加载歌单' : this.playlistMode === 'editable' ? '等待添加歌曲' : '暂无可播放歌曲')
+    this.artist.textContent = song ? [song.artist, song.album].filter(Boolean).join(' · ') || '未知艺术家' : '—'
     this.status.textContent = !song
       ? '队列为空'
       : state.error
@@ -423,6 +441,7 @@ export class PlayerView {
     this.analysisSource.refresh()
 
     this.renderPanel(state)
+    this.renderPlaylistMode()
     this.lyricView.setLines(state.lyrics, song)
     this.lyricView.setActive(state.activeLyricIndex)
     this.lyricView.setTime(state.currentTime * 1000 + state.lyricOffsetMs)
@@ -463,7 +482,9 @@ export class PlayerView {
     if (!matches.length) {
       const empty = document.createElement('p')
       empty.className = 'empty-state'
-      empty.textContent = state.playlist.length ? '没有匹配的歌曲' : '队列为空，可导入 JSON 歌单'
+      empty.textContent = state.playlist.length
+        ? '没有匹配的歌曲'
+        : this.playlistMode === 'editable' ? '队列为空，可导入 JSON 歌单' : '当前没有可播放歌曲'
       this.queueContainer.append(empty)
       return
     }
@@ -472,7 +493,7 @@ export class PlayerView {
       const item = document.createElement('div')
       item.className = 'queue-item'
       item.dataset.queueIndex = String(index)
-      item.draggable = true
+      item.draggable = this.playlistMode === 'editable'
       item.classList.toggle('is-current', index === state.currentIndex)
 
       const button = document.createElement('button')
@@ -495,14 +516,17 @@ export class PlayerView {
       copy.append(title, artist)
       button.append(number, copy)
 
-      const actions = document.createElement('div')
-      actions.className = 'queue-item-actions'
-      actions.append(
-        this.createQueueAction('move-song-up', 'chevron-up', `上移 ${song.title}`, index, index === 0),
-        this.createQueueAction('move-song-down', 'chevron-down', `下移 ${song.title}`, index, index === state.playlist.length - 1),
-        this.createQueueAction('remove-song', 'trash', `从队列移除 ${song.title}`, index),
-      )
-      item.append(button, actions)
+      item.append(button)
+      if (this.playlistMode === 'editable') {
+        const actions = document.createElement('div')
+        actions.className = 'queue-item-actions'
+        actions.append(
+          this.createQueueAction('move-song-up', 'chevron-up', `上移 ${song.title}`, index, index === 0),
+          this.createQueueAction('move-song-down', 'chevron-down', `下移 ${song.title}`, index, index === state.playlist.length - 1),
+          this.createQueueAction('remove-song', 'trash', `从队列移除 ${song.title}`, index),
+        )
+        item.append(actions)
+      }
       this.queueContainer.append(item)
     })
 
@@ -528,6 +552,13 @@ export class PlayerView {
     button.disabled = disabled
     setButtonIcon(button, icon, label)
     return button
+  }
+
+  private renderPlaylistMode(): void {
+    const editable = this.playlistMode === 'editable'
+    this.importPlaylistButton.hidden = !editable
+    this.playlistFileInput.disabled = !editable
+    this.queueToolbar.classList.toggle('is-readonly', !editable)
   }
 
   private resetQueueDragState(): void {

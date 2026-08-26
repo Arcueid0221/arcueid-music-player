@@ -5,6 +5,7 @@
 现有 `<arcueid-music-player>` 标签和原有播放方法保持兼容。新增能力均为可选：
 
 - `theme="light|dark|system"` 控制主题，默认 `system`；
+- `playlist-mode="readonly|editable"` 控制访客队列界面，默认 `readonly`；需要旧版导入、删除和排序入口时显式使用 `editable`；
 - `setLyricOffset(ms)` 校准歌词，范围为 ±30 秒；
 - `retry()` 与 `skipFailed()` 对应错误恢复；
 - `createMusicPlayer(options)` 用于自定义挂载点和多实例生命周期；
@@ -20,6 +21,9 @@
 ```ts
 onMounted(async () => {
   const { createMusicPlayer } = await import('arcueid-music-player')
-  createMusicPlayer({ target: document.querySelector('#player')! })
+  createMusicPlayer({
+    target: document.querySelector('#player')!,
+    playlistMode: 'readonly',
+  })
 })
 ```

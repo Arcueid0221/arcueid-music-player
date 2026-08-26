@@ -317,6 +317,9 @@ input[type="range"]:disabled { cursor: not-allowed; opacity: 0.48; }
   margin-bottom: 8px;
 }
 
+.queue-toolbar.is-readonly { grid-template-columns: minmax(0, 1fr); }
+.playlist-management[hidden] { display: none; }
+
 .queue-toolbar[hidden], .queue-feedback[hidden] { display: none; }
 .queue-toolbar .compact-control { width: 32px; height: 32px; border-radius: 9px; }
 

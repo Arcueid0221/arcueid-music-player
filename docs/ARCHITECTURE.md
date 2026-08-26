@@ -120,7 +120,7 @@ flowchart TD
 
 `ArcueidMusicPlayer` 是网页使用者看到的自定义元素。它只负责：
 
-- 读取 `play-mode`、`volume`、`remember-playback` 等 HTML 属性；
+- 读取 `play-mode`、`playlist-mode`、`volume`、`remember-playback` 等 HTML 属性；
 - 初始化 Shadow DOM、Store、Engine、Controller 和 View；
 - 管理连接/断开时的资源创建与释放；
 - 提供 `play()`、`pause()`、`next()`、`seek()` 等公共方法；
@@ -200,7 +200,7 @@ Store 保存完整 `PlayerState`：
 
 `playback-lifecycle.ts` 记录用户的播放意图，页面隐藏时触发即时持久化，恢复可见或从 BFCache 返回时重新激活音频。显式暂停会清除播放意图，因此不会出现“回到页面后擅自播放”。
 
-`playlist-provider.ts` 定义统一的 `PlaylistProvider` 接口，并提供数组、JSON API 和用户文件三种实现。Provider 只负责读取和规范化数据，Controller 决定替换还是追加队列，View 不直接发起网络请求。
+`playlist-provider.ts` 定义统一的 `PlaylistProvider` 接口，并提供数组、JSON API 和用户文件三种实现。Provider 只负责读取和规范化数据，Controller 决定替换还是追加队列，View 不直接发起网络请求。博客前台默认使用 `playlist-mode="readonly"`，文件 Provider 只在显式 `editable` 界面、宿主代码或未来 Admin 工具中使用。
 
 `create-player.ts` 是可选的程序化入口。每个实例都创建独立 Element、Store、Engine 和默认播放记忆 key；Media Session 跟随最近开始播放的实例。
 
@@ -284,7 +284,7 @@ Audio timeupdate
 - 新增完整播放状态：时间、时长、音量、静音、加载、错误、歌词和面板；
 - 新增 `LyricRepository`，支持歌词 URL、缓存、切歌请求取消和过期结果保护；
 - 新增播放记忆，可恢复歌曲、进度、音量、静音和播放模式；
-- 新增可展开的歌单和歌词面板；歌单支持搜索、增删、按钮/拖拽排序和当前歌曲自动定位；
+- 新增可展开的歌单和歌词面板；只读模式支持搜索、选择和当前歌曲自动定位，显式 `editable` 模式额外支持增删与按钮/拖拽排序；
 - 新增点击歌曲切歌、点击歌词跳转和点击波形调整进度；
 - 新增宿主键盘快捷键：空格播放/暂停、左右键快退/快进、上下键调整音量；
 - 波形新增 DPR 适配、ResizeObserver 和真实音频数据不可用时的进度线降级；
@@ -339,6 +339,7 @@ HTML 属性适合简单配置：
 ```html
 <arcueid-music-player
   play-mode="order"
+  playlist-mode="readonly"
   volume="0.8"
   remember-playback
   playlist-src="/api/playlist.json"

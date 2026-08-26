@@ -2,6 +2,7 @@ export type PlayMode = 'order' | 'single' | 'random'
 
 export type PlayerPanel = 'lyrics' | 'queue' | null
 export type PlayerTheme = 'light' | 'dark' | 'system'
+export type PlaylistMode = 'readonly' | 'editable'
 
 export interface LyricWord {
   startMs: number
