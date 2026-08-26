@@ -99,6 +99,13 @@ export class AudioEngine {
     return data
   }
 
+  getTimeDomainData(): Uint8Array | null {
+    if (!this.analyser) return null
+    const data = new Uint8Array(this.analyser.fftSize)
+    this.analyser.getByteTimeDomainData(data)
+    return data
+  }
+
   subscribe(listener: SnapshotListener): () => void {
     this.listeners.add(listener)
     listener(this.snapshot())
@@ -159,7 +166,7 @@ export class AudioEngine {
     if (!this.audioContext) {
       this.audioContext = new AudioContext()
       this.analyser = this.audioContext.createAnalyser()
-      this.analyser.fftSize = 128
+      this.analyser.fftSize = 256
       this.analyser.smoothingTimeConstant = 0.78
       this.source = this.audioContext.createMediaElementSource(this.audio)
       this.source.connect(this.analyser)

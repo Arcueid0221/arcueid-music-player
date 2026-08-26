@@ -4,6 +4,7 @@ export class LyricView {
   private lines: LyricLine[] = []
   private elements: HTMLButtonElement[] = []
   private activeIndex = -1
+  private readonly reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
   constructor(
     private readonly container: HTMLElement,
@@ -42,6 +43,6 @@ export class LyricView {
     this.activeIndex = index
     const current = this.elements[index]
     current?.classList.add('is-active')
-    current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    current?.scrollIntoView({ block: 'center', behavior: this.reducedMotion ? 'auto' : 'smooth' })
   }
 }

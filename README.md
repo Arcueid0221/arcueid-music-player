@@ -1,6 +1,6 @@
 # Arcueid Music Player
 
-一个基于原生 Web Components、TypeScript 与 HTML5 Audio 的轻量音乐播放器。项目从 `xf-music-player` 的实验代码重构而来，保留本地歌单、播放控制、播放模式、同步歌词和实时波形，同时把业务编排从 UI 中拆开。
+一个基于原生 Web Components、TypeScript 与 HTML5 Audio 的轻量音乐播放器。项目从 `xf-music-player` 的实验代码重构而来，保留本地歌单、播放控制、播放模式和同步歌词，并增加波形进度轨、当前歌词底边栏、图标控制与跨浏览器音量条，同时把业务编排从 UI 中拆开。
 
 ## 开发
 
@@ -41,7 +41,7 @@ player.playlist = [
 - `domain/`：稳定的数据类型与纯播放队列算法。
 - `core/`：音频引擎、状态仓库和播放器编排。
 - `services/`：歌词加载/解析与播放记忆。
-- `ui/`：只负责 DOM、样式、歌词列表和 Canvas 波形。
+- `ui/`：只负责 DOM、样式、歌词列表、图标控制和 Canvas 波形。
 - `player-element.ts`：薄薄的一层 Web Component 适配器与公开 API。
 
 完整的分层、拆分映射和功能增减说明见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)，后续扩展原则和阶段计划见 [docs/ROADMAP.md](./docs/ROADMAP.md)。

@@ -1,15 +1,18 @@
+import { AudioAnalysisSource } from '../core/audio-analysis-source'
+import type { AudioEngine } from '../core/audio-engine'
 import type { PlayerController } from '../core/player-controller'
 import type { PlayerStore } from '../core/player-store'
-import type { PlayerState, Song } from '../domain/types'
-import type { AudioEngine } from '../core/audio-engine'
+import type { PlayMode, PlayerState, Song } from '../domain/types'
+import { createPlayerIcon, setButtonIcon, type PlayerIcon } from './components/icon'
 import { LyricView } from './components/lyric-view'
+import { NowPlayingRail } from './components/now-playing-rail'
 import { WaveformRenderer } from './components/waveform'
 
-const MODE_LABEL = {
-  order: '顺序播放',
-  single: '单曲循环',
-  random: '随机播放',
-} as const
+const MODE_CONTROL: Record<PlayMode, { label: string; icon: PlayerIcon }> = {
+  order: { label: '顺序播放', icon: 'repeat' },
+  single: { label: '单曲循环', icon: 'repeat-one' },
+  random: { label: '随机播放', icon: 'shuffle' },
+}
 
 function formatTime(value: number): string {
   if (!Number.isFinite(value) || value < 0) return '00:00'
@@ -21,10 +24,17 @@ function formatTime(value: number): string {
 export class PlayerView {
   private readonly eventController = new AbortController()
   private readonly waveform: WaveformRenderer
+  private readonly nowPlayingRail: NowPlayingRail
+  private readonly analysisSource: AudioAnalysisSource
   private readonly lyricView: LyricView
   private readonly unsubscribe: () => void
+  private readonly unsubscribeAnalysis: () => void
   private lastPlaylist?: Song[]
   private lastIndex = -1
+  private lastPlaying?: boolean
+  private lastMode?: PlayMode
+  private lastMuted?: boolean
+  private draggingWaveform = false
 
   private readonly title: HTMLElement
   private readonly artist: HTMLElement
@@ -41,7 +51,7 @@ export class PlayerView {
   private readonly panelTitle: HTMLElement
   private readonly lyricContainer: HTMLElement
   private readonly queueContainer: HTMLElement
-  private readonly canvas: HTMLCanvasElement
+  private readonly waveformControl: HTMLElement
 
   constructor(
     private readonly root: ShadowRoot,
@@ -61,42 +71,65 @@ export class PlayerView {
           <span class="playback-status" role="status"></span>
         </header>
 
-        <button class="waveform-button" type="button" aria-label="调整播放进度">
-          <canvas class="waveform" height="54"></canvas>
-        </button>
+        <div
+          class="waveform-control"
+          role="slider"
+          tabindex="0"
+          aria-label="播放进度"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-keyshortcuts="ArrowLeft ArrowRight Home End"
+        >
+          <canvas class="waveform" height="58" aria-hidden="true"></canvas>
+        </div>
         <div class="time-row">
           <span class="current-time">00:00</span>
           <span class="duration">00:00</span>
         </div>
 
         <nav class="transport" aria-label="播放控制">
-          <button type="button" data-action="previous">上一首</button>
-          <button class="primary-control" type="button" data-action="toggle">播放</button>
-          <button type="button" data-action="next">下一首</button>
+          <button class="icon-button" type="button" data-action="previous"></button>
+          <button class="icon-button primary-control" type="button" data-action="toggle"></button>
+          <button class="icon-button" type="button" data-action="next"></button>
         </nav>
 
         <div class="utility-row">
-          <button type="button" data-action="mode"></button>
+          <button class="icon-button" type="button" data-action="mode"></button>
           <label class="volume-control">
             <span class="sr-only">音量</span>
-            <input type="range" min="0" max="1" step="0.01" data-action="volume" />
+            <input type="range" min="0" max="1" step="0.01" data-action="volume" aria-label="音量" />
           </label>
-          <button type="button" data-action="mute">静音</button>
+          <button class="icon-button" type="button" data-action="mute"></button>
         </div>
 
-        <div class="panel-actions">
-          <button type="button" data-panel="lyrics">歌词</button>
-          <button type="button" data-panel="queue">歌单</button>
+        <div class="panel-actions" aria-label="内容面板">
+          <button class="icon-button" type="button" data-panel="lyrics"></button>
+          <button class="icon-button" type="button" data-panel="queue"></button>
         </div>
 
         <section class="detail-panel" hidden>
           <div class="panel-heading">
             <h3></h3>
-            <button type="button" data-action="close-panel">收起</button>
+            <button class="icon-button compact-control" type="button" data-action="close-panel"></button>
           </div>
           <div class="lyric-list"></div>
           <div class="queue-list"></div>
         </section>
+
+        <button
+          class="now-playing-rail"
+          type="button"
+          data-panel="lyrics"
+          aria-label="显示当前歌词"
+          aria-expanded="false"
+        >
+          <span class="rail-icon" aria-hidden="true"></span>
+          <span class="now-playing-copy">
+            <span class="now-playing-label">NOW PLAYING</span>
+            <span class="now-playing-text"></span>
+          </span>
+          <canvas class="rail-waveform" width="116" height="28" aria-hidden="true"></canvas>
+        </button>
       </section>
     `
 
@@ -109,31 +142,53 @@ export class PlayerView {
     this.modeButton = this.get('[data-action="mode"]')
     this.muteButton = this.get('[data-action="mute"]')
     this.volumeInput = this.get('[data-action="volume"]')
-    this.lyricButton = this.get('[data-panel="lyrics"]')
+    this.lyricButton = this.get('[data-panel="lyrics"]:not(.now-playing-rail)')
     this.queueButton = this.get('[data-panel="queue"]')
     this.panel = this.get('.detail-panel')
     this.panelTitle = this.get('.panel-heading h3')
     this.lyricContainer = this.get('.lyric-list')
     this.queueContainer = this.get('.queue-list')
-    this.canvas = this.get('.waveform')
+    this.waveformControl = this.get('.waveform-control')
 
-    this.waveform = new WaveformRenderer(this.canvas)
+    const waveformCanvas = this.get<HTMLCanvasElement>('.waveform')
+    const railButton = this.get<HTMLButtonElement>('.now-playing-rail')
+    const railCanvas = this.get<HTMLCanvasElement>('.rail-waveform')
+    const railIcon = this.get<HTMLElement>('.rail-icon')
+    railIcon.append(createPlayerIcon('audio-lines', 18))
+
+    this.waveform = new WaveformRenderer(waveformCanvas)
+    this.nowPlayingRail = new NowPlayingRail(railButton, railCanvas)
+    this.analysisSource = new AudioAnalysisSource(engine)
     this.lyricView = new LyricView(this.lyricContainer, (seconds) => controller.seek(seconds))
+
+    setButtonIcon(this.get('[data-action="previous"]'), 'skip-back', '上一首')
+    setButtonIcon(this.get('[data-action="next"]'), 'skip-forward', '下一首')
+    setButtonIcon(this.lyricButton, 'captions', '歌词')
+    setButtonIcon(this.queueButton, 'list-music', '播放队列')
+    setButtonIcon(this.get('[data-action="close-panel"]'), 'close', '收起面板')
+
     this.bindEvents()
-    this.unsubscribe = store.subscribe((state) => this.render(state, engine))
-    this.render(store.getState(), engine)
+    this.unsubscribeAnalysis = this.analysisSource.subscribe((frame) => {
+      this.waveform.update(frame)
+      this.nowPlayingRail.update(frame)
+    })
+    this.unsubscribe = store.subscribe((state) => this.render(state))
+    this.render(store.getState())
   }
 
   destroy(): void {
     this.eventController.abort()
     this.unsubscribe()
+    this.unsubscribeAnalysis()
+    this.analysisSource.destroy()
     this.waveform.destroy()
+    this.nowPlayingRail.destroy()
   }
 
   private bindEvents(): void {
     this.root.addEventListener('click', (event) => {
       const target = event.target
-      if (!(target instanceof HTMLElement)) return
+      if (!(target instanceof Element)) return
       const action = target.closest<HTMLButtonElement>('[data-action]')?.dataset.action
       if (action === 'previous') void this.controller.previous()
       if (action === 'toggle') void this.controller.toggle()
@@ -152,20 +207,59 @@ export class PlayerView {
       if (songButton) void this.controller.select(Number(songButton.dataset.songIndex))
     }, { signal: this.eventController.signal })
 
-    this.volumeInput.addEventListener('input', () => {
+    const updateVolume = (): void => {
       this.controller.setVolume(Number(this.volumeInput.value))
-    }, { signal: this.eventController.signal })
+    }
+    this.volumeInput.addEventListener('input', updateVolume, { signal: this.eventController.signal })
+    this.volumeInput.addEventListener('change', updateVolume, { signal: this.eventController.signal })
 
-    const waveformButton = this.get<HTMLButtonElement>('.waveform-button')
-    waveformButton.addEventListener('pointerenter', () => this.waveform.setHovering(true), { signal: this.eventController.signal })
-    waveformButton.addEventListener('pointerleave', () => this.waveform.setHovering(false), { signal: this.eventController.signal })
-    waveformButton.addEventListener('click', (event) => {
-      const rect = waveformButton.getBoundingClientRect()
-      this.controller.seekRatio((event.clientX - rect.left) / rect.width)
+    const ratioFromPointer = (event: PointerEvent): number => {
+      const rect = this.waveformControl.getBoundingClientRect()
+      return Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
+    }
+    const previewPointer = (event: PointerEvent, seek: boolean): void => {
+      const ratio = ratioFromPointer(event)
+      this.waveform.setPointerRatio(ratio)
+      if (seek) this.controller.seekRatio(ratio)
+    }
+
+    this.waveformControl.addEventListener('pointerdown', (event) => {
+      event.preventDefault()
+      this.draggingWaveform = true
+      this.waveformControl.setPointerCapture(event.pointerId)
+      previewPointer(event, true)
+    }, { signal: this.eventController.signal })
+    this.waveformControl.addEventListener('pointermove', (event) => {
+      previewPointer(event, this.draggingWaveform)
+    }, { signal: this.eventController.signal })
+    this.waveformControl.addEventListener('pointerup', (event) => {
+      previewPointer(event, true)
+      this.draggingWaveform = false
+      if (this.waveformControl.hasPointerCapture(event.pointerId)) this.waveformControl.releasePointerCapture(event.pointerId)
+    }, { signal: this.eventController.signal })
+    this.waveformControl.addEventListener('pointercancel', () => {
+      this.draggingWaveform = false
+      this.waveform.setPointerRatio(null)
+    }, { signal: this.eventController.signal })
+    this.waveformControl.addEventListener('pointerleave', () => {
+      if (!this.draggingWaveform) this.waveform.setPointerRatio(null)
+    }, { signal: this.eventController.signal })
+    this.waveformControl.addEventListener('keydown', (event) => {
+      const state = this.store.getState()
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        event.stopPropagation()
+        this.controller.seek(state.currentTime + (event.key === 'ArrowRight' ? 5 : -5))
+      }
+      if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault()
+        event.stopPropagation()
+        this.controller.seek(event.key === 'Home' ? 0 : state.duration)
+      }
     }, { signal: this.eventController.signal })
   }
 
-  private render(state: PlayerState, engine: AudioEngine): void {
+  private render(state: PlayerState): void {
     const song = state.playlist[state.currentIndex]
     this.title.textContent = song?.title ?? '等待添加歌曲'
     this.artist.textContent = [song?.artist, song?.album].filter(Boolean).join(' · ') || '未知艺术家'
@@ -180,25 +274,44 @@ export class PlayerView {
     this.status.title = state.error ?? ''
     this.currentTime.textContent = formatTime(state.currentTime)
     this.duration.textContent = formatTime(state.duration || song?.duration || 0)
-    this.playButton.textContent = state.isPlaying ? '暂停' : '播放'
-    this.playButton.setAttribute('aria-pressed', String(state.isPlaying))
-    this.modeButton.textContent = MODE_LABEL[state.playMode]
-    this.muteButton.textContent = state.muted ? '取消静音' : '静音'
-    this.volumeInput.value = String(state.volume)
 
-    const progress = () => state.duration > 0 ? state.currentTime / state.duration : 0
-    this.waveform.refresh(progress)
-    if (state.isPlaying) this.waveform.start(() => engine.getFrequencyData(), () => {
-      const latest = this.store.getState()
-      return latest.duration > 0 ? latest.currentTime / latest.duration : 0
-    })
-    else this.waveform.stop()
+    if (this.lastPlaying !== state.isPlaying) {
+      setButtonIcon(this.playButton, state.isPlaying ? 'pause' : 'play', state.isPlaying ? '暂停' : '播放')
+      this.playButton.setAttribute('aria-pressed', String(state.isPlaying))
+      this.lastPlaying = state.isPlaying
+    }
+    if (this.lastMode !== state.playMode) {
+      const mode = MODE_CONTROL[state.playMode]
+      setButtonIcon(this.modeButton, mode.icon, mode.label)
+      this.modeButton.setAttribute('aria-label', `${mode.label}，点击切换播放模式`)
+      this.lastMode = state.playMode
+    }
+    if (this.lastMuted !== state.muted) {
+      setButtonIcon(this.muteButton, state.muted ? 'volume-muted' : 'volume', state.muted ? '取消静音' : '静音')
+      this.muteButton.setAttribute('aria-pressed', String(state.muted))
+      this.lastMuted = state.muted
+    }
+
+    this.volumeInput.value = String(state.volume)
+    this.volumeInput.style.setProperty('--range-progress', `${state.volume * 100}%`)
+    this.volumeInput.setAttribute('aria-valuetext', `${state.muted ? '已静音，' : ''}音量 ${Math.round(state.volume * 100)}%`)
+
+    const progress = state.duration > 0 ? state.currentTime / state.duration : 0
+    this.waveformControl.setAttribute('aria-valuenow', String(Math.round(progress * 100)))
+    this.waveformControl.setAttribute('aria-valuetext', `${formatTime(state.currentTime)} / ${formatTime(state.duration)}`)
+
+    if (state.isPlaying) this.analysisSource.start()
+    else this.analysisSource.stop()
+    this.analysisSource.refresh()
 
     this.renderPanel(state)
     this.lyricView.setLines(state.lyrics)
     this.lyricView.setActive(state.activeLyricIndex)
+    this.nowPlayingRail.setState(state)
     this.lyricButton.classList.toggle('is-active', state.panel === 'lyrics')
+    this.lyricButton.setAttribute('aria-pressed', String(state.panel === 'lyrics'))
     this.queueButton.classList.toggle('is-active', state.panel === 'queue')
+    this.queueButton.setAttribute('aria-pressed', String(state.panel === 'queue'))
 
     if (this.lastPlaylist !== state.playlist || this.lastIndex !== state.currentIndex) {
       this.renderQueue(state)

@@ -86,18 +86,22 @@ button:focus-visible, input:focus-visible {
 
 .playback-status.is-error { background: #fbe8e8; color: #a33d3d; }
 
-.waveform-button {
+.waveform-control {
   display: block;
   width: calc(100% - 40px);
-  height: 54px;
+  height: 58px;
   margin: 2px 20px 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  border-radius: 10px;
   cursor: pointer;
+  touch-action: none;
 }
 
-.waveform { display: block; width: 100%; height: 54px; }
+.waveform-control:focus-visible {
+  outline: 3px solid rgba(109, 74, 255, 0.25);
+  outline-offset: 2px;
+}
+
+.waveform { display: block; width: 100%; height: 58px; }
 
 .time-row {
   display: flex;
@@ -110,60 +114,113 @@ button:focus-visible, input:focus-visible {
 
 .transport {
   display: grid;
-  grid-template-columns: 1fr 1.3fr 1fr;
-  gap: 8px;
+  grid-template-columns: 42px 50px 42px;
+  justify-content: center;
+  gap: 14px;
   padding: 0 20px;
 }
 
-.transport button,
-.utility-row button,
-.panel-actions button,
-.panel-heading button {
+.icon-button {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
   border: 0;
   border-radius: 11px;
   background: #ece9f2;
-  padding: 10px 12px;
+  padding: 0;
   color: var(--player-ink);
-  font-size: 12px;
-  font-weight: 750;
   cursor: pointer;
   transition: transform 150ms ease, background-color 150ms ease, color 150ms ease;
 }
 
+.control-icon { display: block; pointer-events: none; }
 button:hover { transform: translateY(-1px); }
 
 .transport .primary-control {
+  width: 50px;
   background: var(--player-accent);
   color: #fff;
 }
 
 .utility-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 10px 20px 12px;
 }
 
-.utility-row button { padding: 8px 10px; font-size: 11px; }
-
-.volume-control { display: flex; align-items: center; }
+.volume-control { display: flex; min-width: 0; align-items: center; }
 
 input[type="range"] {
+  --range-progress: 80%;
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
-  height: 4px;
-  accent-color: var(--player-accent);
+  height: 32px;
+  margin: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
 }
 
+input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--player-accent) 0%,
+    var(--player-accent) var(--range-progress),
+    #d8d2e1 var(--range-progress),
+    #d8d2e1 100%
+  );
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--player-accent);
+  box-shadow: 0 1px 5px rgba(31, 23, 52, 0.28);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: #d8d2e1;
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--player-accent);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--player-accent);
+  box-shadow: 0 1px 5px rgba(31, 23, 52, 0.28);
+}
+
+input[type="range"]:disabled { cursor: not-allowed; opacity: 0.48; }
+
 .panel-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
   padding: 0 20px 18px;
 }
 
-.panel-actions button { padding: 8px; background: transparent; color: var(--player-muted); }
+.panel-actions button { background: transparent; color: var(--player-muted); }
 .panel-actions button.is-active { background: #eeeaf8; color: var(--player-accent); }
 
 .detail-panel {
@@ -182,7 +239,7 @@ input[type="range"] {
 }
 
 .panel-heading h3 { margin: 0; font-size: 13px; }
-.panel-heading button { padding: 6px 9px; font-size: 10px; }
+.panel-heading .compact-control { width: 32px; height: 32px; border-radius: 9px; }
 
 .lyric-list, .queue-list {
   max-height: min(270px, 38vh);
@@ -232,12 +289,52 @@ input[type="range"] {
 .empty-state { margin: 20px 0; color: var(--player-muted); font-size: 12px; text-align: center; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+.now-playing-rail {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 116px;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  overflow: hidden;
+  border: 0;
+  border-top: 1px solid #e7e3ed;
+  background: rgba(239, 235, 246, 0.8);
+  padding: 9px 20px;
+  color: var(--player-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.now-playing-rail:hover,
+.now-playing-rail.is-active { background: #ebe6f5; transform: none; }
+.now-playing-rail.is-active { color: var(--player-accent); }
+
+.rail-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(109, 74, 255, 0.1);
+  color: var(--player-accent);
+}
+
+.now-playing-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.now-playing-label { color: var(--player-muted); font-size: 8px; font-weight: 800; letter-spacing: 0.14em; }
+.now-playing-text { overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.rail-waveform { display: block; width: 116px; height: 28px; opacity: 0.8; }
+
 @media (max-width: 520px) {
   :host { right: 12px; bottom: 12px; left: 12px; width: auto; }
   .track-header { padding: 17px 16px 8px; }
-  .waveform-button { width: calc(100% - 32px); margin-right: 16px; margin-left: 16px; }
+  .waveform-control { width: calc(100% - 32px); margin-right: 16px; margin-left: 16px; }
   .time-row, .transport, .utility-row, .panel-actions { padding-right: 16px; padding-left: 16px; }
   .detail-panel { padding-right: 16px; padding-left: 16px; }
+  .now-playing-rail { grid-template-columns: 32px minmax(0, 1fr) 88px; padding-right: 16px; padding-left: 16px; }
+  .rail-waveform { width: 88px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
