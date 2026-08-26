@@ -22,6 +22,7 @@ describe('AudioEngine output graph', () => {
 
   it('routes volume and mute through GainNode after playback starts', async () => {
     class FakeAudio {
+      preload = ''
       volume = 1
       muted = false
       paused = true
@@ -78,6 +79,7 @@ describe('AudioEngine output graph', () => {
     expect(fakeGain.gain.value).toBe(0.35)
 
     const internals = engine as unknown as { audio: FakeAudio }
+    expect(internals.audio.preload).toBe('auto')
     expect(internals.audio.volume).toBe(1)
     expect(internals.audio.muted).toBe(false)
     engine.destroy()

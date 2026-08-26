@@ -311,25 +311,29 @@ export class PlayerView {
       const rect = this.waveformControl.getBoundingClientRect()
       return Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
     }
-    const previewPointer = (event: PointerEvent, seek: boolean): void => {
+    const previewPointer = (event: PointerEvent): number => {
       const ratio = ratioFromPointer(event)
       this.waveform.setPointerRatio(ratio)
-      if (seek) this.controller.seekRatio(ratio)
+      return ratio
     }
 
     this.waveformControl.addEventListener('pointerdown', (event) => {
       event.preventDefault()
       this.draggingWaveform = true
       this.waveformControl.setPointerCapture(event.pointerId)
-      previewPointer(event, true)
+      // Safari starts a new media range request for many currentTime writes.
+      // Keep drag movement visual and commit exactly once on pointerup.
+      previewPointer(event)
     }, { signal: this.eventController.signal })
     this.waveformControl.addEventListener('pointermove', (event) => {
-      previewPointer(event, this.draggingWaveform)
+      previewPointer(event)
     }, { signal: this.eventController.signal })
     this.waveformControl.addEventListener('pointerup', (event) => {
-      previewPointer(event, true)
+      if (!this.draggingWaveform) return
+      const ratio = previewPointer(event)
       this.draggingWaveform = false
       if (this.waveformControl.hasPointerCapture(event.pointerId)) this.waveformControl.releasePointerCapture(event.pointerId)
+      this.controller.seekRatio(ratio)
     }, { signal: this.eventController.signal })
     this.waveformControl.addEventListener('pointercancel', () => {
       this.draggingWaveform = false

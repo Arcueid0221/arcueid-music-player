@@ -22,11 +22,15 @@ export class AudioEngine {
   private source?: MediaElementAudioSourceNode
   private error?: string
   private loading = false
+  private loadingTimer?: ReturnType<typeof setTimeout>
   private volume = 0.8
   private muted = false
 
   constructor() {
-    this.audio.preload = 'metadata'
+    // Preloading the active track makes long-distance seeking less likely to
+    // require a fresh range request. iOS may still limit preloading according
+    // to its data-saving policy, so the UI also commits only one seek per drag.
+    this.audio.preload = 'auto'
     this.audio.volume = this.volume
 
     this.audio.addEventListener('timeupdate', this.emit)
@@ -45,6 +49,7 @@ export class AudioEngine {
   }
 
   load(song: Song): void {
+    this.clearLoadingTimer()
     this.error = undefined
     this.loading = true
     if (song.crossOrigin === undefined) this.audio.removeAttribute('crossorigin')
@@ -65,16 +70,21 @@ export class AudioEngine {
   }
 
   pause(): void {
+    this.clearLoadingTimer()
+    this.loading = false
     this.audio.pause()
   }
 
   stop(): void {
+    this.clearLoadingTimer()
+    this.loading = false
     this.audio.pause()
     this.audio.currentTime = 0
     this.emit()
   }
 
   clear(): void {
+    this.clearLoadingTimer()
     this.audio.pause()
     this.audio.removeAttribute('src')
     this.audio.load()
@@ -151,6 +161,7 @@ export class AudioEngine {
   }
 
   destroy(): void {
+    this.clearLoadingTimer()
     this.audio.pause()
     this.audio.removeAttribute('src')
     this.audio.load()
@@ -176,11 +187,19 @@ export class AudioEngine {
   }
 
   private readonly handleWaiting = (): void => {
-    this.loading = true
-    this.emit()
+    if (this.loadingTimer) return
+    // Safari can emit a very short waiting event while completing an already
+    // buffered seek. Avoid flashing “载入中” unless the wait is observable.
+    this.loadingTimer = globalThis.setTimeout(() => {
+      this.loadingTimer = undefined
+      if (this.audio.paused || this.audio.readyState >= this.audio.HAVE_FUTURE_DATA) return
+      this.loading = true
+      this.emit()
+    }, 180)
   }
 
   private readonly handlePlaying = (): void => {
+    this.clearLoadingTimer()
     this.loading = false
     this.error = undefined
     this.emit()
@@ -191,6 +210,7 @@ export class AudioEngine {
   }
 
   private readonly handleError = (): void => {
+    this.clearLoadingTimer()
     this.loading = false
     this.error = this.audio.error?.message || '音频加载失败'
     this.emit()
@@ -241,5 +261,10 @@ export class AudioEngine {
     // graph is created and on browsers where it behaves correctly.
     this.audio.volume = this.volume
     this.audio.muted = this.muted
+  }
+
+  private clearLoadingTimer(): void {
+    if (this.loadingTimer) globalThis.clearTimeout(this.loadingTimer)
+    this.loadingTimer = undefined
   }
 }
