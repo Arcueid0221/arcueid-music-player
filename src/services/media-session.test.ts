@@ -13,6 +13,7 @@ function createState(update: Partial<PlayerState> = {}): PlayerState {
     muted: false,
     isPlaying: true,
     isLoading: false,
+    isPlaylistLoading: false,
     playMode: 'order',
     panel: null,
     lyrics: [],

@@ -16,6 +16,7 @@ npm run build
   play-mode="order"
   volume="0.8"
   remember-playback
+  playlist-src="/api/playlist.json"
 ></arcueid-music-player>
 ```
 
@@ -34,13 +35,27 @@ player.playlist = [
 ] satisfies Song[]
 ```
 
-公开方法包括 `play`、`pause`、`stop`、`toggle`、`next`、`previous`、`select`、`seek`、`seekBy`、`setVolume`、`mute`、`setPlayMode` 与 `getState`。
+也可以使用可替换的数据源：
+
+```ts
+import {
+  ArrayPlaylistProvider,
+  FilePlaylistProvider,
+  JsonPlaylistProvider,
+} from 'arcueid-music-player'
+
+await player.loadPlaylist(new JsonPlaylistProvider('/api/playlist.json'))
+await player.loadPlaylist(new ArrayPlaylistProvider(moreSongs), 'append')
+await player.loadPlaylist(new FilePlaylistProvider(file), 'append')
+```
+
+公开方法包括 `play`、`pause`、`stop`、`toggle`、`next`、`previous`、`select`、`seek`、`seekBy`、`setVolume`、`mute`、`setPlayMode`、`loadPlaylist`、`usePlaylist`、`addSongs`、`removeSong`、`moveSong` 与 `getState`。
 
 ## 分层
 
 - `domain/`：稳定的数据类型与纯播放队列算法。
 - `core/`：音频引擎、状态仓库和播放器编排。
-- `services/`：歌词加载/解析、播放记忆与 Media Session 系统媒体适配。
+- `services/`：歌词、播放记忆、后台恢复、Media Session 与 PlaylistProvider 外部数据适配。
 - `ui/`：只负责 DOM、样式、歌词列表、图标控制和 Canvas 波形。
 - `player-element.ts`：薄薄的一层 Web Component 适配器与公开 API。
 

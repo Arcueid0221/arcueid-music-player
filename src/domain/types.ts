@@ -30,7 +30,9 @@ export interface PlayerState {
   muted: boolean
   isPlaying: boolean
   isLoading: boolean
+  isPlaylistLoading: boolean
   error?: string
+  playlistMessage?: string
   playMode: PlayMode
   panel: PlayerPanel
   lyrics: LyricLine[]

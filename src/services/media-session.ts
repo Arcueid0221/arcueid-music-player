@@ -64,7 +64,7 @@ export class MediaSessionService {
         : null
     }
 
-    this.session.playbackState = state.isPlaying ? 'playing' : 'paused'
+    this.session.playbackState = song ? state.isPlaying ? 'playing' : 'paused' : 'none'
     if (state.duration <= 0 || !Number.isFinite(state.duration)) return
 
     try {

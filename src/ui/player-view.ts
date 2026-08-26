@@ -3,6 +3,7 @@ import type { AudioEngine } from '../core/audio-engine'
 import type { PlayerController } from '../core/player-controller'
 import type { PlayerStore } from '../core/player-store'
 import type { PlayMode, PlayerState, Song } from '../domain/types'
+import { FilePlaylistProvider } from '../services/playlist-provider'
 import { createPlayerIcon, setButtonIcon, type PlayerIcon } from './components/icon'
 import { LyricView } from './components/lyric-view'
 import { NowPlayingRail } from './components/now-playing-rail'
@@ -34,7 +35,10 @@ export class PlayerView {
   private lastPlaying?: boolean
   private lastMode?: PlayMode
   private lastMuted?: boolean
+  private lastPanel?: PlayerState['panel']
   private draggingWaveform = false
+  private draggedSongIndex = -1
+  private queueQuery = ''
 
   private readonly title: HTMLElement
   private readonly artist: HTMLElement
@@ -51,6 +55,10 @@ export class PlayerView {
   private readonly panelTitle: HTMLElement
   private readonly lyricContainer: HTMLElement
   private readonly queueContainer: HTMLElement
+  private readonly queueToolbar: HTMLElement
+  private readonly queueSearch: HTMLInputElement
+  private readonly queueFeedback: HTMLElement
+  private readonly playlistFileInput: HTMLInputElement
   private readonly waveformControl: HTMLElement
 
   constructor(
@@ -112,8 +120,14 @@ export class PlayerView {
             <h3></h3>
             <button class="icon-button compact-control" type="button" data-action="close-panel"></button>
           </div>
+          <div class="queue-toolbar" hidden>
+            <input class="queue-search" type="search" placeholder="搜索歌曲、歌手或专辑" aria-label="搜索播放队列" />
+            <button class="icon-button compact-control" type="button" data-action="import-playlist"></button>
+            <input class="playlist-file-input" type="file" accept="application/json,.json" hidden />
+          </div>
+          <p class="queue-feedback" role="status" aria-live="polite" hidden></p>
           <div class="lyric-list"></div>
-          <div class="queue-list"></div>
+          <div class="queue-list" aria-label="歌曲列表"></div>
         </section>
 
         <button
@@ -148,6 +162,10 @@ export class PlayerView {
     this.panelTitle = this.get('.panel-heading h3')
     this.lyricContainer = this.get('.lyric-list')
     this.queueContainer = this.get('.queue-list')
+    this.queueToolbar = this.get('.queue-toolbar')
+    this.queueSearch = this.get('.queue-search')
+    this.queueFeedback = this.get('.queue-feedback')
+    this.playlistFileInput = this.get('.playlist-file-input')
     this.waveformControl = this.get('.waveform-control')
 
     const waveformCanvas = this.get<HTMLCanvasElement>('.waveform')
@@ -166,6 +184,7 @@ export class PlayerView {
     setButtonIcon(this.lyricButton, 'captions', '歌词')
     setButtonIcon(this.queueButton, 'list-music', '播放队列')
     setButtonIcon(this.get('[data-action="close-panel"]'), 'close', '收起面板')
+    setButtonIcon(this.get('[data-action="import-playlist"]'), 'list-plus', '导入 JSON 歌单并添加到队列')
 
     this.bindEvents()
     this.unsubscribeAnalysis = this.analysisSource.subscribe((frame) => {
@@ -195,6 +214,14 @@ export class PlayerView {
       if (action === 'next') void this.controller.next()
       if (action === 'mode') this.controller.cyclePlayMode()
       if (action === 'mute') this.controller.toggleMuted()
+      if (action === 'import-playlist') this.playlistFileInput.click()
+      const songIndex = Number(target.closest<HTMLButtonElement>('[data-song-index]')?.dataset.songIndex)
+      if (Number.isInteger(songIndex)) {
+        if (action === 'select-song') void this.controller.select(songIndex)
+        if (action === 'remove-song') void this.controller.removeSong(songIndex)
+        if (action === 'move-song-up') this.controller.moveSong(songIndex, songIndex - 1)
+        if (action === 'move-song-down') this.controller.moveSong(songIndex, songIndex + 1)
+      }
       if (action === 'close-panel') {
         const panel = this.store.getState().panel
         if (panel) this.controller.togglePanel(panel)
@@ -203,9 +230,42 @@ export class PlayerView {
       const panel = target.closest<HTMLButtonElement>('[data-panel]')?.dataset.panel
       if (panel === 'lyrics' || panel === 'queue') this.controller.togglePanel(panel)
 
-      const songButton = target.closest<HTMLButtonElement>('[data-song-index]')
-      if (songButton) void this.controller.select(Number(songButton.dataset.songIndex))
     }, { signal: this.eventController.signal })
+
+    this.queueSearch.addEventListener('input', () => {
+      this.queueQuery = this.queueSearch.value.trim().toLocaleLowerCase()
+      this.renderQueue(this.store.getState())
+    }, { signal: this.eventController.signal })
+
+    this.playlistFileInput.addEventListener('change', () => {
+      const file = this.playlistFileInput.files?.[0]
+      this.playlistFileInput.value = ''
+      if (!file) return
+      void this.controller.loadPlaylist(new FilePlaylistProvider(file), 'append').catch(() => undefined)
+    }, { signal: this.eventController.signal })
+
+    this.queueContainer.addEventListener('dragstart', (event) => {
+      const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-queue-index]') : null
+      this.draggedSongIndex = Number(item?.dataset.queueIndex ?? -1)
+      item?.classList.add('is-dragging')
+      event.dataTransfer?.setData('text/plain', String(this.draggedSongIndex))
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+    }, { signal: this.eventController.signal })
+    this.queueContainer.addEventListener('dragover', (event) => {
+      const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-queue-index]') : null
+      if (!item) return
+      event.preventDefault()
+      this.queueContainer.querySelectorAll('.is-drop-target').forEach((element) => element.classList.remove('is-drop-target'))
+      item.classList.add('is-drop-target')
+    }, { signal: this.eventController.signal })
+    this.queueContainer.addEventListener('drop', (event) => {
+      const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-queue-index]') : null
+      const targetIndex = Number(item?.dataset.queueIndex ?? -1)
+      event.preventDefault()
+      if (this.draggedSongIndex >= 0 && targetIndex >= 0) this.controller.moveSong(this.draggedSongIndex, targetIndex)
+      this.resetQueueDragState()
+    }, { signal: this.eventController.signal })
+    this.queueContainer.addEventListener('dragend', () => this.resetQueueDragState(), { signal: this.eventController.signal })
 
     const updateVolume = (): void => {
       this.controller.setVolume(Number(this.volumeInput.value))
@@ -263,14 +323,16 @@ export class PlayerView {
     const song = state.playlist[state.currentIndex]
     this.title.textContent = song?.title ?? '等待添加歌曲'
     this.artist.textContent = [song?.artist, song?.album].filter(Boolean).join(' · ') || '未知艺术家'
-    this.status.textContent = state.error
+    this.status.textContent = !song
+      ? '队列为空'
+      : state.error
       ? '播放出错'
       : state.isLoading
         ? '载入中'
         : state.isPlaying
           ? '正在播放'
           : '已暂停'
-    this.status.classList.toggle('is-error', Boolean(state.error))
+    this.status.classList.toggle('is-error', Boolean(song && state.error))
     this.status.title = state.error ?? ''
     this.currentTime.textContent = formatTime(state.currentTime)
     this.duration.textContent = formatTime(state.duration || song?.duration || 0)
@@ -313,11 +375,12 @@ export class PlayerView {
     this.queueButton.classList.toggle('is-active', state.panel === 'queue')
     this.queueButton.setAttribute('aria-pressed', String(state.panel === 'queue'))
 
-    if (this.lastPlaylist !== state.playlist || this.lastIndex !== state.currentIndex) {
+    if (this.lastPlaylist !== state.playlist || this.lastIndex !== state.currentIndex || this.lastPanel !== state.panel) {
       this.renderQueue(state)
       this.lastPlaylist = state.playlist
       this.lastIndex = state.currentIndex
     }
+    this.lastPanel = state.panel
   }
 
   private renderPanel(state: PlayerState): void {
@@ -325,17 +388,41 @@ export class PlayerView {
     this.panelTitle.textContent = state.panel === 'lyrics' ? '同步歌词' : '播放队列'
     this.lyricContainer.hidden = state.panel !== 'lyrics'
     this.queueContainer.hidden = state.panel !== 'queue'
+    this.queueToolbar.hidden = state.panel !== 'queue'
+    this.queueFeedback.hidden = state.panel !== 'queue' || (!state.playlistMessage && !state.isPlaylistLoading)
+    this.queueFeedback.textContent = state.isPlaylistLoading ? '正在读取歌单…' : state.playlistMessage ?? ''
   }
 
   private renderQueue(state: PlayerState): void {
     this.queueContainer.replaceChildren()
-    state.playlist.forEach((song, index) => {
+    const matches = state.playlist
+      .map((song, index) => ({ song, index }))
+      .filter(({ song }) => !this.queueQuery || [song.title, song.artist, song.album]
+        .filter(Boolean)
+        .some((value) => value!.toLocaleLowerCase().includes(this.queueQuery)))
+
+    if (!matches.length) {
+      const empty = document.createElement('p')
+      empty.className = 'empty-state'
+      empty.textContent = state.playlist.length ? '没有匹配的歌曲' : '队列为空，可导入 JSON 歌单'
+      this.queueContainer.append(empty)
+      return
+    }
+
+    matches.forEach(({ song, index }) => {
+      const item = document.createElement('div')
+      item.className = 'queue-item'
+      item.dataset.queueIndex = String(index)
+      item.draggable = true
+      item.classList.toggle('is-current', index === state.currentIndex)
+
       const button = document.createElement('button')
       button.type = 'button'
-      button.className = 'queue-item'
+      button.className = 'queue-select'
+      button.dataset.action = 'select-song'
       button.dataset.songIndex = String(index)
-      button.classList.toggle('is-current', index === state.currentIndex)
       button.setAttribute('aria-current', index === state.currentIndex ? 'true' : 'false')
+      button.setAttribute('aria-label', `${index === state.currentIndex ? '当前播放，' : ''}播放 ${song.title}`)
 
       const number = document.createElement('span')
       number.className = 'queue-number'
@@ -348,7 +435,46 @@ export class PlayerView {
       artist.textContent = song.artist || '未知艺术家'
       copy.append(title, artist)
       button.append(number, copy)
-      this.queueContainer.append(button)
+
+      const actions = document.createElement('div')
+      actions.className = 'queue-item-actions'
+      actions.append(
+        this.createQueueAction('move-song-up', 'chevron-up', `上移 ${song.title}`, index, index === 0),
+        this.createQueueAction('move-song-down', 'chevron-down', `下移 ${song.title}`, index, index === state.playlist.length - 1),
+        this.createQueueAction('remove-song', 'trash', `从队列移除 ${song.title}`, index),
+      )
+      item.append(button, actions)
+      this.queueContainer.append(item)
+    })
+
+    if (state.panel === 'queue' && !this.queueQuery) {
+      requestAnimationFrame(() => {
+        this.queueContainer.querySelector('.queue-item.is-current')?.scrollIntoView({ block: 'nearest' })
+      })
+    }
+  }
+
+  private createQueueAction(
+    action: string,
+    icon: PlayerIcon,
+    label: string,
+    songIndex: number,
+    disabled = false,
+  ): HTMLButtonElement {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'queue-action'
+    button.dataset.action = action
+    button.dataset.songIndex = String(songIndex)
+    button.disabled = disabled
+    setButtonIcon(button, icon, label)
+    return button
+  }
+
+  private resetQueueDragState(): void {
+    this.draggedSongIndex = -1
+    this.queueContainer.querySelectorAll('.is-dragging, .is-drop-target').forEach((element) => {
+      element.classList.remove('is-dragging', 'is-drop-target')
     })
   }
 

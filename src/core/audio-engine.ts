@@ -72,6 +72,15 @@ export class AudioEngine {
     this.emit()
   }
 
+  clear(): void {
+    this.audio.pause()
+    this.audio.removeAttribute('src')
+    this.audio.load()
+    this.loading = false
+    this.error = undefined
+    this.emit()
+  }
+
   seek(seconds: number): void {
     if (!Number.isFinite(seconds)) return
     const duration = this.duration

@@ -12,6 +12,7 @@ const state: PlayerState = {
   muted: false,
   isPlaying: false,
   isLoading: false,
+  isPlaylistLoading: false,
   playMode: 'order',
   panel: null,
   lyrics: [{ timeMs: 1_000, text: 'Current line' }],

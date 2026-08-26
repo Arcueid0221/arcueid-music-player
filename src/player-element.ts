@@ -5,14 +5,20 @@ import { demoPlaylist } from './data/demo-playlist'
 import type { PlayMode, Song } from './domain/types'
 import { LyricRepository } from './services/lyric-repository'
 import { MediaSessionService } from './services/media-session'
+import { PlaybackLifecycleService } from './services/playback-lifecycle'
 import { PlaybackMemory } from './services/playback-memory'
+import {
+  ArrayPlaylistProvider,
+  JsonPlaylistProvider,
+  type PlaylistProvider,
+} from './services/playlist-provider'
 import styles from './ui/player.css?inline'
 import { PlayerView } from './ui/player-view'
 
 const PLAY_MODES: PlayMode[] = ['order', 'single', 'random']
 
 export class ArcueidMusicPlayer extends HTMLElement {
-  static readonly observedAttributes = ['play-mode', 'volume', 'remember-playback']
+  static readonly observedAttributes = ['play-mode', 'volume', 'remember-playback', 'playlist-src']
 
   private playerStore?: PlayerStore
   private controller?: PlayerController
@@ -20,7 +26,7 @@ export class ArcueidMusicPlayer extends HTMLElement {
   private songs: Song[] = demoPlaylist
 
   get playlist(): Song[] {
-    return [...this.songs]
+    return [...(this.playerStore?.getState().playlist ?? this.songs)]
   }
 
   set playlist(value: Song[]) {
@@ -52,6 +58,7 @@ export class ArcueidMusicPlayer extends HTMLElement {
       muted: volume === 0,
       isPlaying: false,
       isLoading: false,
+      isPlaylistLoading: false,
       playMode,
       panel: this.hasAttribute('expanded') ? 'queue' : null,
       lyrics: [],
@@ -64,6 +71,7 @@ export class ArcueidMusicPlayer extends HTMLElement {
       new LyricRepository(),
       new PlaybackMemory(this.hasAttribute('remember-playback'), this.getAttribute('memory-key') || undefined),
       new MediaSessionService(),
+      new PlaybackLifecycleService(),
     )
 
     this.playerStore = store
@@ -71,9 +79,12 @@ export class ArcueidMusicPlayer extends HTMLElement {
     this.view = new PlayerView(root, store, controller, engine)
     this.addEventListener('keydown', this.handleKeydown)
     controller.initialize()
+    const playlistSrc = this.getAttribute('playlist-src')
+    if (playlistSrc) void controller.loadPlaylist(new JsonPlaylistProvider(playlistSrc)).catch(() => undefined)
   }
 
   disconnectedCallback(): void {
+    if (this.playerStore) this.songs = [...this.playerStore.getState().playlist]
     this.removeEventListener('keydown', this.handleKeydown)
     this.view?.destroy()
     this.controller?.destroy()
@@ -88,6 +99,9 @@ export class ArcueidMusicPlayer extends HTMLElement {
       this.controller.setPlayMode(newValue as PlayMode)
     }
     if (name === 'volume' && newValue !== null) this.controller.setVolume(this.readVolume())
+    if (name === 'playlist-src' && newValue) {
+      void this.controller.loadPlaylist(new JsonPlaylistProvider(newValue)).catch(() => undefined)
+    }
   }
 
   play(): Promise<void> {
@@ -136,6 +150,33 @@ export class ArcueidMusicPlayer extends HTMLElement {
 
   setPlayMode(mode: PlayMode): void {
     this.controller?.setPlayMode(mode)
+  }
+
+  async loadPlaylist(provider: PlaylistProvider, mode: 'replace' | 'append' = 'replace'): Promise<number> {
+    if (this.controller) return this.controller.loadPlaylist(provider, mode)
+    const songs = await provider.load()
+    this.songs = mode === 'append' ? [...this.songs, ...songs] : [...songs]
+    return songs.length
+  }
+
+  addSongs(songs: readonly Song[]): void {
+    if (!this.controller) {
+      this.songs.push(...songs)
+      return
+    }
+    this.controller.addSongs(songs)
+  }
+
+  removeSong(index: number): Promise<void> {
+    return this.controller?.removeSong(index) ?? Promise.resolve()
+  }
+
+  moveSong(from: number, to: number): void {
+    this.controller?.moveSong(from, to)
+  }
+
+  usePlaylist(songs: readonly Song[], mode: 'replace' | 'append' = 'replace'): Promise<number> {
+    return this.loadPlaylist(new ArrayPlaylistProvider(songs), mode)
   }
 
   getState() {

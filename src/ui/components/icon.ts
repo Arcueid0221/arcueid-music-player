@@ -1,7 +1,10 @@
 import {
   AudioLines,
   Captions,
+  ChevronDown,
+  ChevronUp,
   createElement,
+  ListPlus,
   ListMusic,
   Pause,
   Play,
@@ -10,6 +13,7 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  Trash2,
   Volume2,
   VolumeX,
   X,
@@ -19,8 +23,11 @@ import {
 export type PlayerIcon =
   | 'audio-lines'
   | 'captions'
+  | 'chevron-down'
+  | 'chevron-up'
   | 'close'
   | 'list-music'
+  | 'list-plus'
   | 'pause'
   | 'play'
   | 'repeat'
@@ -28,14 +35,18 @@ export type PlayerIcon =
   | 'shuffle'
   | 'skip-back'
   | 'skip-forward'
+  | 'trash'
   | 'volume'
   | 'volume-muted'
 
 const ICONS: Record<PlayerIcon, IconNode> = {
   'audio-lines': AudioLines,
   captions: Captions,
+  'chevron-down': ChevronDown,
+  'chevron-up': ChevronUp,
   close: X,
   'list-music': ListMusic,
+  'list-plus': ListPlus,
   pause: Pause,
   play: Play,
   repeat: Repeat2,
@@ -43,6 +54,7 @@ const ICONS: Record<PlayerIcon, IconNode> = {
   shuffle: Shuffle,
   'skip-back': SkipBack,
   'skip-forward': SkipForward,
+  trash: Trash2,
   volume: Volume2,
   'volume-muted': VolumeX,
 }

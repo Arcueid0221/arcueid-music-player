@@ -40,3 +40,25 @@ export function previousIndex(
     ? randomIndex(length, safeCurrent, random)
     : (safeCurrent - 1 + length) % length
 }
+
+export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {
+  if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return [...items]
+  const next = [...items]
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
+}
+
+export function indexAfterMove(current: number, from: number, to: number): number {
+  if (current === from) return to
+  if (from < current && to >= current) return current - 1
+  if (from > current && to <= current) return current + 1
+  return current
+}
+
+export function indexAfterRemoval(current: number, removed: number, nextLength: number): number {
+  if (nextLength <= 0) return -1
+  if (removed < current) return current - 1
+  if (removed === current) return Math.min(current, nextLength - 1)
+  return current
+}

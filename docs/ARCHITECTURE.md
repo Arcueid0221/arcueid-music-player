@@ -40,6 +40,8 @@ arcueid-music-player/
 │   │   ├── lyric-parser.test.ts   # 歌词解析测试
 │   │   ├── lyric-repository.ts    # 歌词获取、缓存和请求取消
 │   │   ├── media-session.ts       # 系统媒体键、锁屏元数据和位置同步
+│   │   ├── playback-lifecycle.ts  # 后台持久化与回到前台后的播放恢复
+│   │   ├── playlist-provider.ts   # 本地数组、JSON API 与文件歌单适配
 │   │   └── playback-memory.ts     # localStorage 播放记忆
 │   ├── ui/
 │   │   ├── components/
@@ -53,6 +55,7 @@ arcueid-music-player/
 │   └── player-element.ts          # Web Component 接入层与公共 API
 ├── docs/
 │   ├── ARCHITECTURE.md            # 本文
+│   ├── STAGE-2-3-BROWSER-AUDIT.md # 阶段 2/3 浏览器流程审核
 │   └── ROADMAP.md                 # 后续功能计划
 ├── design-qa.md                   # 视觉与浏览器验证记录
 ├── index.html                     # 本地演示入口
@@ -75,6 +78,8 @@ flowchart TD
     LR[LyricRepository\n歌词获取与缓存]
     PM[PlaybackMemory\n播放记忆]
     MS[MediaSessionService\n系统媒体适配]
+    PL[PlaybackLifecycleService\n后台恢复]
+    PP[PlaylistProvider\n歌单数据源]
     D[Domain\n类型与纯算法]
 
     E --> V
@@ -85,6 +90,8 @@ flowchart TD
     C --> LR
     C --> PM
     C --> MS
+    C --> PL
+    C --> PP
     C --> D
     V --> S
     V --> C
@@ -126,7 +133,8 @@ Controller 是播放器的用例中心，负责回答“某个用户动作应该
 - 切歌时加载新歌词、取消旧请求并忽略过期结果；
 - 根据当前时间计算活动歌词；
 - 更新音量、静音、进度与 UI 面板状态；
-- 延迟写入播放记忆，避免每次时间更新都访问 localStorage。
+- 延迟写入播放记忆，并在进入后台时立即落盘；
+- 编排歌单 Provider 导入、队列追加、删除和排序。
 
 所有“跨模块行为”集中在这里，因此后续排查播放状态问题时不需要从 DOM 事件一路追到多个文件。
 
@@ -180,7 +188,9 @@ Store 保存完整 `PlayerState`：
 
 `media-session.ts` 单独封装浏览器 Media Session API。Controller 只提供播放、暂停、切歌和跳转用例，Service 负责系统媒体键、锁屏元数据、播放状态与位置同步；不支持该 API 的浏览器自动降级为空实现。
 
-未来接入云端 API、IndexedDB 或用户本地文件时，应继续采用类似 Service/Provider，而不是把 fetch 写进自定义元素。
+`playback-lifecycle.ts` 记录用户的播放意图，页面隐藏时触发即时持久化，恢复可见或从 BFCache 返回时重新激活音频。显式暂停会清除播放意图，因此不会出现“回到页面后擅自播放”。
+
+`playlist-provider.ts` 定义统一的 `PlaylistProvider` 接口，并提供数组、JSON API 和用户文件三种实现。Provider 只负责读取和规范化数据，Controller 决定替换还是追加队列，View 不直接发起网络请求。
 
 ### 4.7 `ui/`：表现层
 
@@ -254,7 +264,7 @@ Audio timeupdate
 - 删除多个只能保存一个回调的 `onPlay/onPause/onTimeUpdate` UI 耦合槽，改成订阅模型；
 - 合并独立的“播放”和“暂停”按钮为有状态的主按钮；
 - 默认不展开歌单，保持参考播放器的紧凑入口；
-- 不在当前阶段支持把复杂歌单 JSON 塞进 HTML 字符串属性，推荐使用类型安全的 `playlist` 属性。
+- 不把复杂歌单 JSON 塞进 HTML 字符串属性；使用 `playlist` 属性、`playlist-src` 或 `PlaylistProvider`。
 
 ## 8. 相较旧版 `xf-music-player` 的新增与增强
 
@@ -262,12 +272,14 @@ Audio timeupdate
 - 新增完整播放状态：时间、时长、音量、静音、加载、错误、歌词和面板；
 - 新增 `LyricRepository`，支持歌词 URL、缓存、切歌请求取消和过期结果保护；
 - 新增播放记忆，可恢复歌曲、进度、音量、静音和播放模式；
-- 新增可展开的歌单和歌词面板；
+- 新增可展开的歌单和歌词面板；歌单支持搜索、增删、按钮/拖拽排序和当前歌曲自动定位；
 - 新增点击歌曲切歌、点击歌词跳转和点击波形调整进度；
 - 新增宿主键盘快捷键：空格播放/暂停、左右键快退/快进、上下键调整音量；
 - 波形新增 DPR 适配、ResizeObserver 和真实音频数据不可用时的进度线降级；
 - 新增移动端布局、焦点样式、ARIA 标签和减少动态效果适配；
 - 新增公开实例 API 与状态快照读取；
+- 新增数组、JSON API、用户文件三种 PlaylistProvider 与完整队列编辑；
+- 新增 Media Session 系统媒体控制和后台恢复；
 - 新增歌单算法与歌词解析测试；
 - 新增桌面/移动端浏览器验证与 Design QA 记录。
 
@@ -317,6 +329,7 @@ HTML 属性适合简单配置：
   play-mode="order"
   volume="0.8"
   remember-playback
+  playlist-src="/api/playlist.json"
 ></arcueid-music-player>
 ```
 
@@ -353,6 +366,11 @@ seekBy(seconds)
 setVolume(volume)
 mute()
 setPlayMode(mode)
+loadPlaylist(provider, mode?)
+usePlaylist(songs, mode?)
+addSongs(songs)
+removeSong(index)
+moveSong(from, to)
 getState()
 ```
 
@@ -362,9 +380,10 @@ getState()
 
 | 新功能 | 推荐位置 | 原因 |
 | --- | --- | --- |
-| 云端歌单/搜索 | `services/playlist-provider.ts` | 网络数据源不属于组件或 AudioEngine |
+| 云端歌单/文件导入 | 已实现于 `services/playlist-provider.ts` | 网络和文件数据源不属于组件或 AudioEngine |
 | Media Session | 已实现于 `services/media-session.ts`，由 Controller 驱动 | 隔离浏览器系统媒体 API |
-| 队列增删/排序 | `domain/queue.ts` + Controller 用例 | 先定义纯规则，再由业务层编排 |
+| 后台恢复 | 已实现于 `services/playback-lifecycle.ts` | 页面生命周期不进入 Engine 或 View |
+| 队列增删/排序/搜索 | 已实现于 `domain/playlist.ts` + Controller + View | 纯规则、业务编排和界面状态各自独立 |
 | 深色/浅色主题 | `player.css` token + Element 属性适配 | 业务逻辑不感知颜色 |
 | 专辑封面 | 扩展 `Song.cover`，由 View 渲染 | 数据契约和表现分开 |
 | IndexedDB 缓存 | 替换或扩展 Service | 不改变 Controller 对外用例 |

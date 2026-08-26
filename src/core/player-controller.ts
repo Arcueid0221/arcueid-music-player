@@ -3,7 +3,15 @@ import { findActiveLyric } from '../services/lyric-parser'
 import { LyricRepository } from '../services/lyric-repository'
 import { PlaybackMemory } from '../services/playback-memory'
 import { MediaSessionService } from '../services/media-session'
-import { nextIndex, previousIndex } from '../domain/playlist'
+import { PlaybackLifecycleService } from '../services/playback-lifecycle'
+import type { PlaylistProvider } from '../services/playlist-provider'
+import {
+  indexAfterMove,
+  indexAfterRemoval,
+  moveItem,
+  nextIndex,
+  previousIndex,
+} from '../domain/playlist'
 import { AudioEngine } from './audio-engine'
 import type { PlayerStore } from './player-store'
 
@@ -11,6 +19,7 @@ export class PlayerController {
   private readonly cleanups: Array<() => void> = []
   private persistTimer?: number
   private lyricRequest = 0
+  private playlistRequest?: AbortController
 
   constructor(
     private readonly store: PlayerStore,
@@ -18,6 +27,7 @@ export class PlayerController {
     private readonly lyrics: LyricRepository,
     private readonly memory: PlaybackMemory,
     private readonly mediaSession: MediaSessionService,
+    private readonly lifecycle: PlaybackLifecycleService,
   ) {
     this.cleanups.push(
       engine.subscribe((snapshot) => {
@@ -37,8 +47,12 @@ export class PlayerController {
         seek: (seconds) => this.seek(seconds),
         seekBy: (seconds) => this.seekBy(seconds),
       }),
+      lifecycle.connect({
+        persist: () => this.persistNow(),
+        resume: () => this.play(),
+      }),
       store.subscribe((state) => {
-        this.schedulePersistence(state.playlist[state.currentIndex])
+        this.schedulePersistence()
         this.mediaSession.update(state)
       }),
     )
@@ -72,14 +86,17 @@ export class PlayerController {
   }
 
   play(): Promise<void> {
+    this.lifecycle.setPlaybackIntent(true)
     return this.engine.play()
   }
 
   pause(): void {
+    this.lifecycle.setPlaybackIntent(false)
     this.engine.pause()
   }
 
   stop(): void {
+    this.lifecycle.setPlaybackIntent(false)
     this.engine.stop()
   }
 
@@ -144,21 +161,113 @@ export class PlayerController {
   }
 
   setPlaylist(playlist: Song[], currentIndex = 0): void {
+    this.lifecycle.setPlaybackIntent(false)
     this.store.setState({
       playlist: [...playlist],
-      currentIndex: Math.min(Math.max(currentIndex, 0), Math.max(playlist.length - 1, 0)),
+      currentIndex: playlist.length
+        ? Math.min(Math.max(currentIndex, 0), playlist.length - 1)
+        : -1,
       currentTime: 0,
       buffered: 0,
       lyrics: [],
       activeLyricIndex: -1,
+      isPlaylistLoading: false,
+      playlistMessage: playlist.length ? `已载入 ${playlist.length} 首歌曲` : '歌单为空',
       error: playlist.length ? undefined : '歌单为空',
     })
     if (playlist.length) void this.loadCurrent(false)
+    else this.engine.clear()
+  }
+
+  addSongs(songs: readonly Song[]): void {
+    if (!songs.length) return
+    const state = this.store.getState()
+    const wasEmpty = state.playlist.length === 0
+    this.store.setState({
+      playlist: [...state.playlist, ...songs],
+      currentIndex: wasEmpty ? 0 : state.currentIndex,
+      error: undefined,
+      playlistMessage: `已添加 ${songs.length} 首歌曲`,
+    })
+    if (wasEmpty) void this.loadCurrent(false)
+  }
+
+  async removeSong(index: number): Promise<void> {
+    const state = this.store.getState()
+    if (index < 0 || index >= state.playlist.length) return
+    const removedCurrent = index === state.currentIndex
+    const wasPlaying = state.isPlaying
+    const playlist = state.playlist.filter((_, songIndex) => songIndex !== index)
+    const currentIndex = indexAfterRemoval(state.currentIndex, index, playlist.length)
+
+    if (!playlist.length) {
+      this.lifecycle.setPlaybackIntent(false)
+      this.engine.clear()
+      this.store.setState({
+        playlist,
+        currentIndex,
+        currentTime: 0,
+        duration: 0,
+        buffered: 0,
+        isPlaying: false,
+        isLoading: false,
+        lyrics: [],
+        activeLyricIndex: -1,
+        error: '歌单为空',
+        playlistMessage: '已移除最后一首歌曲',
+      })
+      return
+    }
+
+    this.store.setState({
+      playlist,
+      currentIndex,
+      playlistMessage: '已从队列移除歌曲',
+    })
+    if (removedCurrent) await this.loadCurrent(wasPlaying)
+  }
+
+  moveSong(from: number, to: number): void {
+    const state = this.store.getState()
+    if (from < 0 || from >= state.playlist.length || to < 0 || to >= state.playlist.length || from === to) return
+    this.store.setState({
+      playlist: moveItem(state.playlist, from, to),
+      currentIndex: indexAfterMove(state.currentIndex, from, to),
+      playlistMessage: `已将歌曲移动到第 ${to + 1} 位`,
+    })
+  }
+
+  async loadPlaylist(provider: PlaylistProvider, mode: 'replace' | 'append' = 'replace'): Promise<number> {
+    this.playlistRequest?.abort()
+    const request = new AbortController()
+    this.playlistRequest = request
+    this.store.setState({ isPlaylistLoading: true, playlistMessage: '正在读取歌单…' })
+    try {
+      const songs = await provider.load({ signal: request.signal })
+      if (request.signal.aborted) return 0
+      if (mode === 'append') this.addSongs(songs)
+      else this.setPlaylist(songs)
+      this.store.setState({
+        isPlaylistLoading: false,
+        playlistMessage: songs.length
+          ? mode === 'append' ? `已添加 ${songs.length} 首歌曲` : `已载入 ${songs.length} 首歌曲`
+          : '歌单为空',
+      })
+      return songs.length
+    } catch (error) {
+      if (request.signal.aborted) return 0
+      const message = error instanceof Error ? error.message : '未知错误'
+      this.store.setState({ isPlaylistLoading: false, playlistMessage: `歌单导入失败：${message}` })
+      throw error
+    } finally {
+      if (this.playlistRequest === request) this.playlistRequest = undefined
+    }
   }
 
   destroy(): void {
     this.cleanups.forEach((cleanup) => cleanup())
     if (this.persistTimer) window.clearTimeout(this.persistTimer)
+    this.playlistRequest?.abort()
     this.lyrics.destroy()
     this.mediaSession.destroy()
     this.engine.destroy()
@@ -182,30 +291,37 @@ export class PlayerController {
       if (request === this.lyricRequest) this.store.setState({ lyrics: [] })
     }
 
-    if (autoplay && request === this.lyricRequest) await this.engine.play()
+    if (autoplay && request === this.lyricRequest) await this.play()
   }
 
   private async handleEnded(): Promise<void> {
     if (this.store.getState().playMode === 'single') {
       this.engine.seek(0)
-      await this.engine.play()
+      await this.play()
       return
     }
     await this.next()
   }
 
-  private schedulePersistence(song?: Song): void {
-    if (!song) return
+  private schedulePersistence(): void {
+    const state = this.store.getState()
+    if (!state.playlist[state.currentIndex]) return
     if (this.persistTimer) window.clearTimeout(this.persistTimer)
-    this.persistTimer = window.setTimeout(() => {
-      const state = this.store.getState()
-      this.memory.write({
-        songId: song.id,
-        currentTime: state.currentTime,
-        volume: state.volume,
-        muted: state.muted,
-        playMode: state.playMode,
-      })
-    }, 400)
+    this.persistTimer = window.setTimeout(() => this.persistNow(), 400)
+  }
+
+  private persistNow(): void {
+    if (this.persistTimer) window.clearTimeout(this.persistTimer)
+    this.persistTimer = undefined
+    const state = this.store.getState()
+    const song = state.playlist[state.currentIndex]
+    if (!song) return
+    this.memory.write({
+      songId: song.id,
+      currentTime: state.currentTime,
+      volume: state.volume,
+      muted: state.muted,
+      playMode: state.playMode,
+    })
   }
 }
