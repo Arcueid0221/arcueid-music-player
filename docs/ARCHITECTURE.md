@@ -52,11 +52,18 @@ arcueid-music-player/
 │   │   ├── player-view.ts         # 界面结构、状态映射和事件转发
 │   │   └── player.css             # 完整组件样式和响应式规则
 │   ├── index.ts                   # 注册自定义元素并导出公共类型
+│   ├── create-player.ts           # 程序化挂载、多实例与生命周期钩子
 │   └── player-element.ts          # Web Component 接入层与公共 API
 ├── docs/
 │   ├── ARCHITECTURE.md            # 本文
+│   ├── BROWSER-COMPATIBILITY.md   # 浏览器能力边界和真实设备验证矩阵
+│   ├── FINAL-BROWSER-AUDIT.md     # 最终交互流程与截图证据
+│   ├── MIGRATION.md               # 从旧组件迁移到稳定公共 API
 │   ├── STAGE-2-3-BROWSER-AUDIT.md # 阶段 2/3 浏览器流程审核
 │   └── ROADMAP.md                 # 后续功能计划
+├── examples/
+│   └── minimal.html               # 程序化挂载最小示例
+├── browser-audit.html             # 可复现的浏览器验收夹具
 ├── design-qa.md                   # 视觉与浏览器验证记录
 ├── index.html                     # 本地演示入口
 ├── package.json
@@ -117,6 +124,7 @@ flowchart TD
 - 初始化 Shadow DOM、Store、Engine、Controller 和 View；
 - 管理连接/断开时的资源创建与释放；
 - 提供 `play()`、`pause()`、`next()`、`seek()` 等公共方法；
+- 派发 `ready`、`trackchange`、`playbackchange` 和 `error` 稳定事件；
 - 将外部赋值的 `playlist` 交给 Controller；
 - 提供空格、方向键等宿主级键盘快捷键。
 
@@ -135,6 +143,7 @@ Controller 是播放器的用例中心，负责回答“某个用户动作应该
 - 更新音量、静音、进度与 UI 面板状态；
 - 延迟写入播放记忆，并在进入后台时立即落盘；
 - 编排歌单 Provider 导入、队列追加、删除和排序。
+- 对音频失败自动重试一次，并跳过持续失败的歌曲。
 
 所有“跨模块行为”集中在这里，因此后续排查播放状态问题时不需要从 DOM 事件一路追到多个文件。
 
@@ -163,6 +172,7 @@ Store 保存完整 `PlayerState`：
 - 播放模式；
 - 当前打开的歌词/歌单面板；
 - 歌词列表与活动歌词索引。
+- 歌词时间偏移、错误恢复动作与歌单导入反馈。
 
 它是一个很小的发布订阅实现，没有引入 Zustand。这样既保留“单一状态源”，又避免当前体量下不必要的运行时依赖。
 
@@ -191,6 +201,8 @@ Store 保存完整 `PlayerState`：
 `playback-lifecycle.ts` 记录用户的播放意图，页面隐藏时触发即时持久化，恢复可见或从 BFCache 返回时重新激活音频。显式暂停会清除播放意图，因此不会出现“回到页面后擅自播放”。
 
 `playlist-provider.ts` 定义统一的 `PlaylistProvider` 接口，并提供数组、JSON API 和用户文件三种实现。Provider 只负责读取和规范化数据，Controller 决定替换还是追加队列，View 不直接发起网络请求。
+
+`create-player.ts` 是可选的程序化入口。每个实例都创建独立 Element、Store、Engine 和默认播放记忆 key；Media Session 跟随最近开始播放的实例。
 
 ### 4.7 `ui/`：表现层
 

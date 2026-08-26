@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findActiveLyric, parseLrc } from './lyric-parser'
+import { findActiveLyric, findActiveWord, parseLrc } from './lyric-parser'
 
 describe('parseLrc', () => {
   it('parses credits, multiple time tags and millisecond variants', () => {
@@ -14,6 +14,17 @@ describe('parseLrc', () => {
     expect(lines[1].timeMs).toBe(1200)
     expect(lines[2].timeMs).toBe(2250)
     expect(lines[3].timeMs).toBe(63_500)
+  })
+
+  it('parses enhanced LRC word timestamps', () => {
+    const [line] = parseLrc('[00:01.00]<00:01.00>Hello <00:01.50>world')
+    expect(line.text).toBe('Hello world')
+    expect(line.words).toEqual([
+      { startMs: 1_000, endMs: 1_500, text: 'Hello ' },
+      { startMs: 1_500, endMs: undefined, text: 'world' },
+    ])
+    expect(findActiveWord(line, 1_499)).toBe(0)
+    expect(findActiveWord(line, 1_500)).toBe(1)
   })
 })
 

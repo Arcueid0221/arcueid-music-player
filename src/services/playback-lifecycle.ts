@@ -34,6 +34,10 @@ export class PlaybackLifecycleService {
     this.playbackIntent = playing
   }
 
+  hasPlaybackIntent(): boolean {
+    return this.playbackIntent
+  }
+
   private readonly handleVisibilityChange = (): void => {
     if (this.visibilityTarget?.visibilityState === 'hidden') this.controls?.persist()
     if (this.visibilityTarget?.visibilityState === 'visible') this.resumeIfNeeded()

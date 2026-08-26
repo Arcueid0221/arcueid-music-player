@@ -20,6 +20,11 @@ export class PlayerController {
   private persistTimer?: number
   private lyricRequest = 0
   private playlistRequest?: AbortController
+  private recoveryTimer?: ReturnType<typeof setTimeout>
+  private readonly retryAttempts = new Map<string, number>()
+  private readonly failedTracks = new Set<string>()
+  private lastEngineError?: string
+  private playbackIntent = false
 
   constructor(
     private readonly store: PlayerStore,
@@ -34,8 +39,17 @@ export class PlayerController {
         const state = store.getState()
         store.setState({
           ...snapshot,
-          activeLyricIndex: findActiveLyric(state.lyrics, snapshot.currentTime * 1000),
+          // Error recovery augments the raw engine error with retry/skip
+          // actions. Preserve the settled error until handlePlaybackError()
+          // publishes the complete public state in one update.
+          error: snapshot.error ? state.error : undefined,
+          activeLyricIndex: findActiveLyric(state.lyrics, snapshot.currentTime * 1000 + state.lyricOffsetMs),
         })
+        if (snapshot.error && snapshot.error !== this.lastEngineError) {
+          this.lastEngineError = snapshot.error
+          this.handlePlaybackError(snapshot.error)
+        }
+        if (!snapshot.error) this.lastEngineError = undefined
       }),
       engine.onEnded(() => void this.handleEnded()),
       mediaSession.connect({
@@ -86,16 +100,19 @@ export class PlayerController {
   }
 
   play(): Promise<void> {
+    this.playbackIntent = true
     this.lifecycle.setPlaybackIntent(true)
     return this.engine.play()
   }
 
   pause(): void {
+    this.playbackIntent = false
     this.lifecycle.setPlaybackIntent(false)
     this.engine.pause()
   }
 
   stop(): void {
+    this.playbackIntent = false
     this.lifecycle.setPlaybackIntent(false)
     this.engine.stop()
   }
@@ -117,7 +134,10 @@ export class PlayerController {
   async select(index: number, autoplay = true): Promise<void> {
     const state = this.store.getState()
     if (index < 0 || index >= state.playlist.length) return
-    this.store.setState({ currentIndex: index, currentTime: 0, buffered: 0, activeLyricIndex: -1 })
+    const song = state.playlist[index]
+    this.failedTracks.delete(String(song.id))
+    this.retryAttempts.delete(String(song.id))
+    this.store.setState({ currentIndex: index, currentTime: 0, buffered: 0, activeLyricIndex: -1, lyricOffsetMs: 0 })
     await this.loadCurrent(autoplay)
   }
 
@@ -150,6 +170,31 @@ export class PlayerController {
     this.store.setState({ playMode })
   }
 
+  setLyricOffset(offsetMs: number): void {
+    const lyricOffsetMs = Math.min(Math.max(Math.trunc(offsetMs), -30_000), 30_000)
+    const state = this.store.getState()
+    this.store.setState({
+      lyricOffsetMs,
+      activeLyricIndex: findActiveLyric(state.lyrics, state.currentTime * 1000 + lyricOffsetMs),
+    })
+  }
+
+  retry(): Promise<void> {
+    const state = this.store.getState()
+    const song = state.playlist[state.currentIndex]
+    if (!song) return Promise.resolve()
+    this.clearRecoveryTimer()
+    this.failedTracks.delete(String(song.id))
+    this.retryAttempts.delete(String(song.id))
+    this.store.setState({ error: undefined, recoveryMessage: '正在重新载入当前歌曲…', canRetry: false, canSkip: false })
+    return this.loadCurrent(this.playbackIntent)
+  }
+
+  skipFailed(): Promise<void> {
+    this.clearRecoveryTimer()
+    return this.skipFailedTrack()
+  }
+
   cyclePlayMode(): void {
     const modes: PlayMode[] = ['order', 'single', 'random']
     const current = this.store.getState().playMode
@@ -161,6 +206,8 @@ export class PlayerController {
   }
 
   setPlaylist(playlist: Song[], currentIndex = 0): void {
+    this.failedTracks.clear()
+    this.retryAttempts.clear()
     this.lifecycle.setPlaybackIntent(false)
     this.store.setState({
       playlist: [...playlist],
@@ -171,6 +218,7 @@ export class PlayerController {
       buffered: 0,
       lyrics: [],
       activeLyricIndex: -1,
+      lyricOffsetMs: 0,
       isPlaylistLoading: false,
       playlistMessage: playlist.length ? `已载入 ${playlist.length} 首歌曲` : '歌单为空',
       error: playlist.length ? undefined : '歌单为空',
@@ -213,6 +261,7 @@ export class PlayerController {
         isLoading: false,
         lyrics: [],
         activeLyricIndex: -1,
+        lyricOffsetMs: 0,
         error: '歌单为空',
         playlistMessage: '已移除最后一首歌曲',
       })
@@ -222,6 +271,7 @@ export class PlayerController {
     this.store.setState({
       playlist,
       currentIndex,
+      lyricOffsetMs: removedCurrent ? 0 : state.lyricOffsetMs,
       playlistMessage: '已从队列移除歌曲',
     })
     if (removedCurrent) await this.loadCurrent(wasPlaying)
@@ -266,7 +316,8 @@ export class PlayerController {
 
   destroy(): void {
     this.cleanups.forEach((cleanup) => cleanup())
-    if (this.persistTimer) window.clearTimeout(this.persistTimer)
+    if (this.persistTimer) globalThis.clearTimeout(this.persistTimer)
+    this.clearRecoveryTimer()
     this.playlistRequest?.abort()
     this.lyrics.destroy()
     this.mediaSession.destroy()
@@ -279,7 +330,17 @@ export class PlayerController {
     if (!song) return
 
     const request = ++this.lyricRequest
-    this.store.setState({ lyrics: [], activeLyricIndex: -1, buffered: 0, error: undefined, isLoading: true })
+    this.clearRecoveryTimer()
+    this.store.setState({
+      lyrics: [],
+      activeLyricIndex: -1,
+      buffered: 0,
+      error: undefined,
+      recoveryMessage: undefined,
+      canRetry: false,
+      canSkip: false,
+      isLoading: true,
+    })
     this.engine.load(song)
     if (restoreTime > 0) void this.engine.seekWhenReady(restoreTime)
 
@@ -306,12 +367,76 @@ export class PlayerController {
   private schedulePersistence(): void {
     const state = this.store.getState()
     if (!state.playlist[state.currentIndex]) return
-    if (this.persistTimer) window.clearTimeout(this.persistTimer)
-    this.persistTimer = window.setTimeout(() => this.persistNow(), 400)
+    if (this.persistTimer) globalThis.clearTimeout(this.persistTimer)
+    this.persistTimer = globalThis.setTimeout(() => this.persistNow(), 400)
+  }
+
+  private handlePlaybackError(error: string): void {
+    const state = this.store.getState()
+    const song = state.playlist[state.currentIndex]
+    if (!song) return
+    const key = String(song.id)
+    const attempt = this.retryAttempts.get(key) ?? 0
+    this.clearRecoveryTimer()
+
+    if (attempt < 1) {
+      this.retryAttempts.set(key, attempt + 1)
+      this.store.setState({
+        error,
+        recoveryMessage: '音频加载失败，正在自动重试（1/1）…',
+        canRetry: false,
+        canSkip: state.playlist.length > 1,
+      })
+      this.recoveryTimer = globalThis.setTimeout(() => {
+        void this.loadCurrent(this.playbackIntent)
+      }, 500)
+      return
+    }
+
+    this.failedTracks.add(key)
+    this.store.setState({
+      error,
+      recoveryMessage: state.playlist.length > 1
+        ? '重试失败，即将跳过这首歌曲。'
+        : '重试失败，请检查音频地址或跨域设置。',
+      canRetry: true,
+      canSkip: state.playlist.length > 1,
+    })
+    if (state.playlist.length > 1) {
+      this.recoveryTimer = globalThis.setTimeout(() => void this.skipFailedTrack(), 1_200)
+    }
+  }
+
+  private async skipFailedTrack(): Promise<void> {
+    const state = this.store.getState()
+    for (let offset = 1; offset <= state.playlist.length; offset += 1) {
+      const index = (state.currentIndex + offset) % state.playlist.length
+      if (!this.failedTracks.has(String(state.playlist[index].id))) {
+        this.store.setState({ recoveryMessage: `已跳过无法播放的歌曲，正在载入 ${state.playlist[index].title}…` })
+        await this.select(index, this.playbackIntent)
+        return
+      }
+    }
+    this.playbackIntent = false
+    this.lifecycle.setPlaybackIntent(false)
+    this.engine.pause()
+    this.store.setState({
+      isPlaying: false,
+      isLoading: false,
+      error: '歌单中的歌曲均无法播放',
+      recoveryMessage: '请检查音频地址、网络或 CORS 响应头。',
+      canRetry: true,
+      canSkip: false,
+    })
+  }
+
+  private clearRecoveryTimer(): void {
+    if (this.recoveryTimer) globalThis.clearTimeout(this.recoveryTimer)
+    this.recoveryTimer = undefined
   }
 
   private persistNow(): void {
-    if (this.persistTimer) window.clearTimeout(this.persistTimer)
+    if (this.persistTimer) globalThis.clearTimeout(this.persistTimer)
     this.persistTimer = undefined
     const state = this.store.getState()
     const song = state.playlist[state.currentIndex]

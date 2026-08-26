@@ -47,14 +47,16 @@ export class AudioEngine {
   load(song: Song): void {
     this.error = undefined
     this.loading = true
+    if (song.crossOrigin === undefined) this.audio.removeAttribute('crossorigin')
+    else this.audio.crossOrigin = song.crossOrigin
     this.audio.src = song.src
     this.audio.load()
     this.emit()
   }
 
   async play(): Promise<void> {
-    await this.ensureAudioGraph()
     try {
+      await this.ensureAudioGraph()
       await this.audio.play()
     } catch {
       this.error = '播放未开始，请再次点击播放'
@@ -201,10 +203,21 @@ export class AudioEngine {
       this.gain = this.audioContext.createGain()
       this.analyser.fftSize = 256
       this.analyser.smoothingTimeConstant = 0.78
-      this.source = this.audioContext.createMediaElementSource(this.audio)
-      this.source.connect(this.analyser)
-      this.analyser.connect(this.gain)
-      this.gain.connect(this.audioContext.destination)
+      try {
+        this.source = this.audioContext.createMediaElementSource(this.audio)
+        this.source.connect(this.analyser)
+        this.analyser.connect(this.gain)
+        this.gain.connect(this.audioContext.destination)
+      } catch {
+        void this.audioContext.close()
+        this.audioContext = undefined
+        this.analyser = undefined
+        this.gain = undefined
+        this.source = undefined
+        this.audio.volume = this.volume
+        this.audio.muted = this.muted
+        return
+      }
 
       // Safari currently ignores HTMLMediaElement.volume for media routed
       // through an AudioContext, and iOS locks per-element media volume.

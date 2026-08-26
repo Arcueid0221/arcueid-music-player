@@ -21,8 +21,10 @@ function defaultMetadataFactory(): MetadataFactory | undefined {
 }
 
 export class MediaSessionService {
+  private static active?: MediaSessionService
   private readonly registeredActions = new Set<MediaSessionAction>()
   private trackKey?: string
+  private controls?: MediaSessionControls
 
   constructor(
     private readonly session: MediaSession | null = defaultSession(),
@@ -30,6 +32,18 @@ export class MediaSessionService {
   ) {}
 
   connect(controls: MediaSessionControls): () => void {
+    this.controls = controls
+    this.activate()
+    return () => {
+      if (MediaSessionService.active === this) {
+        this.clearActions()
+        MediaSessionService.active = undefined
+      }
+      this.controls = undefined
+    }
+  }
+
+  private registerControls(controls: MediaSessionControls): void {
     const actions: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
       ['play', () => void controls.play()],
       ['pause', () => controls.pause()],
@@ -44,11 +58,13 @@ export class MediaSessionService {
     ]
 
     actions.forEach(([action, handler]) => this.setAction(action, handler))
-    return () => this.clearActions()
   }
 
   update(state: PlayerState): void {
     if (!this.session) return
+    if (state.isPlaying && this.controls) this.activate()
+    if (MediaSessionService.active && MediaSessionService.active !== this) return
+    MediaSessionService.active ??= this
     const song = state.playlist[state.currentIndex]
     const trackKey = song ? String(song.id) : undefined
 
@@ -79,11 +95,22 @@ export class MediaSessionService {
   }
 
   destroy(): void {
-    this.clearActions()
+    if (MediaSessionService.active === this) {
+      this.clearActions()
+      MediaSessionService.active = undefined
+    }
     if (!this.session) return
     this.session.metadata = null
     this.session.playbackState = 'none'
     this.trackKey = undefined
+  }
+
+  private activate(): void {
+    if (!this.session || !this.controls || MediaSessionService.active === this) return
+    MediaSessionService.active?.clearActions()
+    MediaSessionService.active = this
+    this.clearActions()
+    this.registerControls(this.controls)
   }
 
   private setAction(action: MediaSessionAction, handler: MediaSessionActionHandler): void {

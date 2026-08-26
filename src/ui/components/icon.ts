@@ -6,8 +6,11 @@ import {
   createElement,
   ListPlus,
   ListMusic,
+  Minus,
   Pause,
   Play,
+  Plus,
+  RefreshCw,
   Repeat1,
   Repeat2,
   Shuffle,
@@ -28,8 +31,11 @@ export type PlayerIcon =
   | 'close'
   | 'list-music'
   | 'list-plus'
+  | 'minus'
   | 'pause'
   | 'play'
+  | 'plus'
+  | 'refresh'
   | 'repeat'
   | 'repeat-one'
   | 'shuffle'
@@ -47,8 +53,11 @@ const ICONS: Record<PlayerIcon, IconNode> = {
   close: X,
   'list-music': ListMusic,
   'list-plus': ListPlus,
+  minus: Minus,
   pause: Pause,
   play: Play,
+  plus: Plus,
+  refresh: RefreshCw,
   repeat: Repeat2,
   'repeat-one': Repeat1,
   shuffle: Shuffle,

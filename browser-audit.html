@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arcueid Music Player Browser Audit</title>
+    <style>
+      body { min-height: 100vh; margin: 0; background: #17151f; color: #f8f5ff; font-family: system-ui, sans-serif; }
+      #event-log { margin: 24px; color: #aaa3b8; }
+    </style>
+  </head>
+  <body>
+    <p id="event-log" role="status">等待播放器事件</p>
+    <arcueid-music-player theme="dark"></arcueid-music-player>
+    <script type="module">
+      import '/src/index.ts'
+
+      const player = document.querySelector('arcueid-music-player')
+      const log = document.querySelector('#event-log')
+      const scenario = new URLSearchParams(location.search).get('scenario')
+      const wordTrack = {
+        id: 'word-audit-track',
+        title: 'Word Track',
+        artist: 'Browser QA',
+        src: '/audio/Steal-A-Kiss.mp3',
+        lyrics: [{
+          timeMs: 0,
+          text: 'Hello world',
+          words: [
+            { startMs: 0, endMs: 1000, text: 'Hello ' },
+            { startMs: 1000, endMs: 3000, text: 'world' },
+          ],
+        }],
+      }
+
+      for (const name of ['ready', 'trackchange', 'playbackchange', 'error']) {
+        player.addEventListener(name, (event) => {
+          log.textContent = name === 'error'
+            ? `最近事件：error；可重试：${event.detail.canRetry}；可跳过：${event.detail.canSkip}`
+            : `最近事件：${name}`
+        })
+      }
+
+      player.addEventListener('ready', async () => {
+        if (scenario === 'error') {
+          player.playlist = [
+            { id: 'broken-audit-track', title: 'Broken Track', artist: 'Browser QA', src: '/audio/missing-audit-track.mp3' },
+            wordTrack,
+          ]
+          await player.select(0)
+          await player.play()
+        } else if (scenario === 'words') {
+          player.playlist = [wordTrack]
+          await player.select(0)
+          await player.play()
+          player.shadowRoot.querySelector('[data-panel="lyrics"]')?.click()
+        }
+      }, { once: true })
+    </script>
+  </body>
+</html>

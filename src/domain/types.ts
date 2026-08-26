@@ -1,11 +1,19 @@
 export type PlayMode = 'order' | 'single' | 'random'
 
 export type PlayerPanel = 'lyrics' | 'queue' | null
+export type PlayerTheme = 'light' | 'dark' | 'system'
+
+export interface LyricWord {
+  startMs: number
+  endMs?: number
+  text: string
+}
 
 export interface LyricLine {
   timeMs: number
   text: string
   kind?: 'credit' | 'lyric'
+  words?: LyricWord[]
 }
 
 export interface Song {
@@ -16,6 +24,7 @@ export interface Song {
   src: string
   duration?: number
   artwork?: MediaImage[]
+  crossOrigin?: '' | 'anonymous' | 'use-credentials'
   lyrics?: string | LyricLine[]
   lyricsUrl?: string
 }
@@ -33,10 +42,14 @@ export interface PlayerState {
   isPlaylistLoading: boolean
   error?: string
   playlistMessage?: string
+  recoveryMessage?: string
+  canRetry: boolean
+  canSkip: boolean
   playMode: PlayMode
   panel: PlayerPanel
   lyrics: LyricLine[]
   activeLyricIndex: number
+  lyricOffsetMs: number
 }
 
 export interface AudioSnapshot {
@@ -46,4 +59,24 @@ export interface AudioSnapshot {
   isPlaying: boolean
   isLoading: boolean
   error?: string
+}
+
+export interface TrackChangeDetail {
+  song?: Song
+  previousSong?: Song
+  index: number
+}
+
+export interface PlaybackChangeDetail {
+  isPlaying: boolean
+  isLoading: boolean
+  currentTime: number
+  duration: number
+}
+
+export interface PlayerErrorDetail {
+  message: string
+  song?: Song
+  canRetry: boolean
+  canSkip: boolean
 }

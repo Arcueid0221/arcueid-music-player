@@ -30,10 +30,23 @@ function parseLyrics(value: unknown): string | LyricLine[] | undefined {
     if (!line || typeof line !== 'object') return []
     const item = line as Record<string, unknown>
     if (typeof item.timeMs !== 'number' || typeof item.text !== 'string') return []
+    const words = Array.isArray(item.words)
+      ? item.words.flatMap((word) => {
+          if (!word || typeof word !== 'object') return []
+          const data = word as Record<string, unknown>
+          if (typeof data.startMs !== 'number' || typeof data.text !== 'string') return []
+          return [{
+            startMs: data.startMs,
+            endMs: typeof data.endMs === 'number' ? data.endMs : undefined,
+            text: data.text,
+          }]
+        })
+      : undefined
     return [{
       timeMs: item.timeMs,
       text: item.text,
       kind: item.kind === 'credit' ? 'credit' as const : 'lyric' as const,
+      words,
     }]
   })
   return lines.length ? lines : undefined
@@ -82,6 +95,9 @@ export function parsePlaylist(payload: unknown, baseUrl?: string): Song[] {
       src: resolveResource(src, baseUrl),
       duration,
       artwork,
+      crossOrigin: item.crossOrigin === '' || item.crossOrigin === 'anonymous' || item.crossOrigin === 'use-credentials'
+        ? item.crossOrigin
+        : undefined,
       lyrics: parseLyrics(item.lyrics),
       lyricsUrl: optionalString(item.lyricsUrl)
         ? resolveResource(optionalString(item.lyricsUrl)!, baseUrl)

@@ -43,6 +43,10 @@ export class PlayerView {
   private readonly title: HTMLElement
   private readonly artist: HTMLElement
   private readonly status: HTMLElement
+  private readonly errorBanner: HTMLElement
+  private readonly errorMessage: HTMLElement
+  private readonly retryButton: HTMLButtonElement
+  private readonly skipButton: HTMLButtonElement
   private readonly currentTime: HTMLElement
   private readonly duration: HTMLElement
   private readonly playButton: HTMLButtonElement
@@ -56,6 +60,8 @@ export class PlayerView {
   private readonly lyricContainer: HTMLElement
   private readonly queueContainer: HTMLElement
   private readonly queueToolbar: HTMLElement
+  private readonly lyricToolbar: HTMLElement
+  private readonly lyricOffset: HTMLElement
   private readonly queueSearch: HTMLInputElement
   private readonly queueFeedback: HTMLElement
   private readonly playlistFileInput: HTMLInputElement
@@ -78,6 +84,14 @@ export class PlayerView {
           </div>
           <span class="playback-status" role="status"></span>
         </header>
+
+        <div class="error-banner" role="alert" hidden>
+          <span class="error-message"></span>
+          <span class="error-actions">
+            <button class="icon-button compact-control" type="button" data-action="retry"></button>
+            <button class="icon-button compact-control" type="button" data-action="skip-failed"></button>
+          </span>
+        </div>
 
         <div
           class="waveform-control"
@@ -125,6 +139,11 @@ export class PlayerView {
             <button class="icon-button compact-control" type="button" data-action="import-playlist"></button>
             <input class="playlist-file-input" type="file" accept="application/json,.json" hidden />
           </div>
+          <div class="lyric-toolbar" hidden aria-label="歌词时间校准">
+            <button class="icon-button compact-control" type="button" data-action="lyric-earlier"></button>
+            <button class="lyric-offset" type="button" data-action="lyric-reset">偏移 0.0 秒</button>
+            <button class="icon-button compact-control" type="button" data-action="lyric-later"></button>
+          </div>
           <p class="queue-feedback" role="status" aria-live="polite" hidden></p>
           <div class="lyric-list"></div>
           <div class="queue-list" aria-label="歌曲列表"></div>
@@ -150,6 +169,10 @@ export class PlayerView {
     this.title = this.get('.track-title')
     this.artist = this.get('.track-artist')
     this.status = this.get('.playback-status')
+    this.errorBanner = this.get('.error-banner')
+    this.errorMessage = this.get('.error-message')
+    this.retryButton = this.get('[data-action="retry"]')
+    this.skipButton = this.get('[data-action="skip-failed"]')
     this.currentTime = this.get('.current-time')
     this.duration = this.get('.duration')
     this.playButton = this.get('[data-action="toggle"]')
@@ -163,6 +186,8 @@ export class PlayerView {
     this.lyricContainer = this.get('.lyric-list')
     this.queueContainer = this.get('.queue-list')
     this.queueToolbar = this.get('.queue-toolbar')
+    this.lyricToolbar = this.get('.lyric-toolbar')
+    this.lyricOffset = this.get('.lyric-offset')
     this.queueSearch = this.get('.queue-search')
     this.queueFeedback = this.get('.queue-feedback')
     this.playlistFileInput = this.get('.playlist-file-input')
@@ -185,6 +210,10 @@ export class PlayerView {
     setButtonIcon(this.queueButton, 'list-music', '播放队列')
     setButtonIcon(this.get('[data-action="close-panel"]'), 'close', '收起面板')
     setButtonIcon(this.get('[data-action="import-playlist"]'), 'list-plus', '导入 JSON 歌单并添加到队列')
+    setButtonIcon(this.retryButton, 'refresh', '立即重试当前歌曲')
+    setButtonIcon(this.skipButton, 'skip-forward', '跳过无法播放的歌曲')
+    setButtonIcon(this.get('[data-action="lyric-earlier"]'), 'minus', '歌词提前 0.5 秒')
+    setButtonIcon(this.get('[data-action="lyric-later"]'), 'plus', '歌词延后 0.5 秒')
 
     this.bindEvents()
     this.unsubscribeAnalysis = this.analysisSource.subscribe((frame) => {
@@ -215,6 +244,11 @@ export class PlayerView {
       if (action === 'mode') this.controller.cyclePlayMode()
       if (action === 'mute') this.controller.toggleMuted()
       if (action === 'import-playlist') this.playlistFileInput.click()
+      if (action === 'retry') void this.controller.retry()
+      if (action === 'skip-failed') void this.controller.skipFailed()
+      if (action === 'lyric-earlier') this.controller.setLyricOffset(this.store.getState().lyricOffsetMs - 500)
+      if (action === 'lyric-later') this.controller.setLyricOffset(this.store.getState().lyricOffsetMs + 500)
+      if (action === 'lyric-reset') this.controller.setLyricOffset(0)
       const songIndex = Number(target.closest<HTMLButtonElement>('[data-song-index]')?.dataset.songIndex)
       if (Number.isInteger(songIndex)) {
         if (action === 'select-song') void this.controller.select(songIndex)
@@ -334,6 +368,10 @@ export class PlayerView {
           : '已暂停'
     this.status.classList.toggle('is-error', Boolean(song && state.error))
     this.status.title = state.error ?? ''
+    this.errorBanner.hidden = !state.error
+    this.errorMessage.textContent = state.recoveryMessage ?? state.error ?? ''
+    this.retryButton.hidden = !state.canRetry
+    this.skipButton.hidden = !state.canSkip
     this.currentTime.textContent = formatTime(state.currentTime)
     this.duration.textContent = formatTime(state.duration || song?.duration || 0)
 
@@ -367,8 +405,9 @@ export class PlayerView {
     this.analysisSource.refresh()
 
     this.renderPanel(state)
-    this.lyricView.setLines(state.lyrics)
+    this.lyricView.setLines(state.lyrics, song)
     this.lyricView.setActive(state.activeLyricIndex)
+    this.lyricView.setTime(state.currentTime * 1000 + state.lyricOffsetMs)
     this.nowPlayingRail.setState(state)
     this.lyricButton.classList.toggle('is-active', state.panel === 'lyrics')
     this.lyricButton.setAttribute('aria-pressed', String(state.panel === 'lyrics'))
@@ -389,6 +428,8 @@ export class PlayerView {
     this.lyricContainer.hidden = state.panel !== 'lyrics'
     this.queueContainer.hidden = state.panel !== 'queue'
     this.queueToolbar.hidden = state.panel !== 'queue'
+    this.lyricToolbar.hidden = state.panel !== 'lyrics'
+    this.lyricOffset.textContent = `偏移 ${(state.lyricOffsetMs / 1000).toFixed(1)} 秒`
     this.queueFeedback.hidden = state.panel !== 'queue' || (!state.playlistMessage && !state.isPlaylistLoading)
     this.queueFeedback.textContent = state.isPlaylistLoading ? '正在读取歌单…' : state.playlistMessage ?? ''
   }

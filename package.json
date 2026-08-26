@@ -3,6 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "module": "./dist/arcueid-music-player.js",
+  "types": "./dist/arcueid-music-player.d.ts",
+  "unpkg": "./dist/arcueid-music-player.min.js",
+  "exports": {
+    ".": {
+      "types": "./dist/arcueid-music-player.d.ts",
+      "import": "./dist/arcueid-music-player.js"
+    }
+  },
+  "files": ["dist", "README.md"],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

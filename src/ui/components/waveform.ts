@@ -77,20 +77,20 @@ export class WaveformRenderer {
 
     this.context.clearRect(0, 0, width, height)
     this.drawCenterLine(width, height)
-    this.drawBars(amplitudes, width, height, barWidth, this.compact ? '#e3deea' : '#e7e3eb')
+    this.drawBars(amplitudes, width, height, barWidth, this.color('--player-wave-idle', '#e7e3eb'))
 
     this.context.save()
     this.context.beginPath()
     this.context.rect(0, 0, bufferedProgress * width, height)
     this.context.clip()
-    this.drawBars(amplitudes, width, height, barWidth, this.compact ? '#cfc8dc' : '#d2ccdc')
+    this.drawBars(amplitudes, width, height, barWidth, this.color('--player-wave-buffered', '#d2ccdc'))
     this.context.restore()
 
     this.context.save()
     this.context.beginPath()
     this.context.rect(0, 0, progress * width, height)
     this.context.clip()
-    this.drawBars(amplitudes, width, height, barWidth, '#6d4aff')
+    this.drawBars(amplitudes, width, height, barWidth, this.color('--player-accent', '#6d4aff'))
     this.context.restore()
 
     if (this.pointerRatio !== null && !this.compact) this.drawPointer(width, height, this.pointerRatio)
@@ -98,7 +98,9 @@ export class WaveformRenderer {
 
   private drawCenterLine(width: number, height: number): void {
     this.context.lineWidth = this.compact ? 1 : 1.5
-    this.context.strokeStyle = this.compact ? 'rgba(109, 74, 255, 0.18)' : '#e6e1ec'
+    this.context.strokeStyle = this.compact
+      ? 'rgba(109, 74, 255, 0.18)'
+      : this.color('--player-wave-center', '#e6e1ec')
     this.context.beginPath()
     this.context.moveTo(0, height / 2)
     this.context.lineTo(width, height / 2)
@@ -119,7 +121,7 @@ export class WaveformRenderer {
 
   private drawPointer(width: number, height: number, ratio: number): void {
     const x = ratio * width
-    this.context.strokeStyle = '#2d2738'
+    this.context.strokeStyle = this.color('--player-pointer', '#2d2738')
     this.context.lineWidth = 1
     this.context.beginPath()
     this.context.moveTo(x, 3)
@@ -129,7 +131,11 @@ export class WaveformRenderer {
     this.context.beginPath()
     this.context.arc(x, height / 2, 4, 0, Math.PI * 2)
     this.context.fill()
-    this.context.strokeStyle = '#6d4aff'
+    this.context.strokeStyle = this.color('--player-accent', '#6d4aff')
     this.context.stroke()
+  }
+
+  private color(token: string, fallback: string): string {
+    return getComputedStyle(this.canvas).getPropertyValue(token).trim() || fallback
   }
 }

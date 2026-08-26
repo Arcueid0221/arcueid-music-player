@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arcueid Music Player 最小示例</title>
+  </head>
+  <body>
+    <main id="player-target"></main>
+    <script type="module">
+      import { createMusicPlayer } from '../dist/arcueid-music-player.js'
+
+      const instance = createMusicPlayer({
+        target: document.querySelector('#player-target'),
+        theme: 'system',
+        playlist: [{ id: 'demo', title: 'Demo', src: '/audio/demo.mp3' }],
+        onReady: (player) => console.info('player ready', player),
+      })
+
+      instance.element.addEventListener('trackchange', (event) => {
+        console.info('track changed', event.detail)
+      })
+    </script>
+  </body>
+</html>

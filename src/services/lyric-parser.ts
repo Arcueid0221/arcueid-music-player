@@ -1,6 +1,7 @@
-import type { LyricLine } from '../domain/types'
+import type { LyricLine, LyricWord } from '../domain/types'
 
 const TIME_TAG = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?]/g
+const WORD_TAG = /<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>/g
 
 function toMilliseconds(minutes: string, seconds: string, fraction?: string): number {
   const milliseconds = fraction
@@ -9,6 +10,25 @@ function toMilliseconds(minutes: string, seconds: string, fraction?: string): nu
   return Number.parseInt(minutes, 10) * 60_000
     + Number.parseInt(seconds, 10) * 1_000
     + milliseconds
+}
+
+function parseWords(source: string): { text: string; words?: LyricWord[] } {
+  const tags = [...source.matchAll(WORD_TAG)]
+  if (!tags.length) return { text: source.trim() }
+  const words = tags.flatMap((tag, index) => {
+    const start = (tag.index ?? 0) + tag[0].length
+    const end = tags[index + 1]?.index ?? source.length
+    const text = source.slice(start, end)
+    if (!text) return []
+    return [{
+      startMs: toMilliseconds(tag[1], tag[2], tag[3]),
+      endMs: tags[index + 1]
+        ? toMilliseconds(tags[index + 1][1], tags[index + 1][2], tags[index + 1][3])
+        : undefined,
+      text,
+    }]
+  })
+  return { text: words.map((word) => word.text).join('').trim(), words }
 }
 
 function parseCredit(line: string): LyricLine | null {
@@ -47,19 +67,30 @@ export function parseLrc(source: string): LyricLine[] {
     if (tags.length === 0) continue
     const lastTag = tags.at(-1)
     if (!lastTag) continue
-    const text = line.slice((lastTag.index ?? 0) + lastTag[0].length).trim()
-    if (!text) continue
+    const parsed = parseWords(line.slice((lastTag.index ?? 0) + lastTag[0].length))
+    if (!parsed.text) continue
 
     for (const tag of tags) {
       result.push({
         timeMs: toMilliseconds(tag[1], tag[2], tag[3]),
-        text,
+        text: parsed.text,
         kind: 'lyric',
+        words: parsed.words,
       })
     }
   }
 
   return result.sort((a, b) => a.timeMs - b.timeMs)
+}
+
+export function findActiveWord(line: LyricLine | undefined, timeMs: number): number {
+  if (!line?.words?.length) return -1
+  let active = -1
+  for (let index = 0; index < line.words.length; index += 1) {
+    if (line.words[index].startMs <= timeMs) active = index
+    else break
+  }
+  return active
 }
 
 export function findActiveLyric(lines: LyricLine[], timeMs: number): number {

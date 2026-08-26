@@ -14,10 +14,13 @@ function createState(update: Partial<PlayerState> = {}): PlayerState {
     isPlaying: true,
     isLoading: false,
     isPlaylistLoading: false,
+    canRetry: false,
+    canSkip: false,
     playMode: 'order',
     panel: null,
     lyrics: [],
     activeLyricIndex: -1,
+    lyricOffsetMs: 0,
     ...update,
   }
 }

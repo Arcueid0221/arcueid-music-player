@@ -7,6 +7,7 @@ export default defineConfig({
     allowedHosts: ['terminal.local'],
   },
   build: {
+    copyPublicDir: false,
     lib: {
       entry: 'src/index.ts',
       name: 'ArcueidMusicPlayer',
@@ -16,5 +17,5 @@ export default defineConfig({
     },
     sourcemap: true,
   },
-  plugins: [dts({ insertTypesEntry: true })],
+  plugins: [dts({ insertTypesEntry: true, exclude: ['src/**/*.test.ts'] })],
 })

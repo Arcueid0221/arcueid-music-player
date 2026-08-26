@@ -13,10 +13,13 @@ const state: PlayerState = {
   isPlaying: false,
   isLoading: false,
   isPlaylistLoading: false,
+  canRetry: false,
+  canSkip: false,
   playMode: 'order',
   panel: null,
   lyrics: [{ timeMs: 1_000, text: 'Current line' }],
   activeLyricIndex: -1,
+  lyricOffsetMs: 0,
 }
 
 describe('getNowPlayingText', () => {
