@@ -97,6 +97,15 @@ import 'arcueid-music-player'
 
 省略 `playlist-id` 时，Provider 会先请求公开歌单列表，选择 `isDefault: true` 的歌单；没有默认项时选择第一个未明确标记为私有的歌单。
 
+在只读 `music-api` 模式下，队列面板采用两级导航：
+
+1. 初次打开直接显示初始或默认歌单的歌曲；
+2. 返回后显示所有公开歌单；
+3. 选择歌单只浏览其歌曲，不暂停音乐或替换当前播放队列；
+4. 点击歌曲时才将该歌单设为实际播放队列，并从所选歌曲开始播放。
+
+歌单详情会在组件实例生命周期内缓存。`playlist-src` 和显式 `editable` 模式继续使用原有单队列界面。
+
 ### 3.3 使用现有单一 JSON 接口
 
 如果 Spring Boot 已经提供直接返回歌曲数组的接口，可以继续使用：
@@ -322,6 +331,7 @@ interface PlaylistSummary {
   name: string
   description?: string
   cover?: string
+  trackCount?: number
   isPublic?: boolean
   isDefault?: boolean
 }

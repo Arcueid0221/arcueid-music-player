@@ -206,6 +206,21 @@ export class PlayerController {
   }
 
   setPlaylist(playlist: Song[], currentIndex = 0): void {
+    this.replacePlaylist(playlist, currentIndex)
+    if (playlist.length) void this.loadCurrent(false)
+    else this.engine.clear()
+  }
+
+  async playPlaylist(playlist: Song[], currentIndex = 0): Promise<void> {
+    this.replacePlaylist(playlist, currentIndex)
+    if (!playlist.length) {
+      this.engine.clear()
+      return
+    }
+    await this.loadCurrent(true)
+  }
+
+  private replacePlaylist(playlist: Song[], currentIndex: number): void {
     this.failedTracks.clear()
     this.retryAttempts.clear()
     this.lifecycle.setPlaybackIntent(false)
@@ -223,8 +238,6 @@ export class PlayerController {
       playlistMessage: playlist.length ? `已载入 ${playlist.length} 首歌曲` : '歌单为空',
       error: playlist.length ? undefined : '歌单为空',
     })
-    if (playlist.length) void this.loadCurrent(false)
-    else this.engine.clear()
   }
 
   addSongs(songs: readonly Song[]): void {

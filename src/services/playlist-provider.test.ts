@@ -35,6 +35,24 @@ describe('playlist providers', () => {
     expect(songs[0].src).toBe('https://example.com/api/remote.mp3')
   })
 
+  it('keeps the browser fetch receiver intact when using the default fetcher', async () => {
+    const fetcher = vi.fn(function (this: unknown) {
+      if (this && this !== globalThis) throw new TypeError('Illegal invocation')
+      return Promise.resolve(new Response(JSON.stringify({
+        playlist: [{ title: 'Browser fetch', src: '/browser-fetch.mp3' }],
+      }), { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetcher)
+
+    try {
+      await expect(new JsonPlaylistProvider('/music/playlist.json').load()).resolves.toEqual([
+        expect.objectContaining({ title: 'Browser fetch', src: '/browser-fetch.mp3' }),
+      ])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('loads a user-selected JSON file', async () => {
     const provider = new FilePlaylistProvider(new Blob([
       JSON.stringify([{ id: 'file', title: 'File song', src: '/file.mp3' }]),

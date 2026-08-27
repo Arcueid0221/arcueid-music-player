@@ -117,7 +117,7 @@ export class ArrayPlaylistProvider implements PlaylistProvider {
 export class JsonPlaylistProvider implements PlaylistProvider {
   constructor(
     private readonly url: string,
-    private readonly fetcher: Fetcher = fetch,
+    private readonly fetcher: Fetcher = (input, init) => fetch(input, init),
   ) {}
 
   async load(options: PlaylistLoadOptions = {}): Promise<Song[]> {

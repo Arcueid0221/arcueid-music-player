@@ -23,10 +23,17 @@ export {
 export type { PlaylistLoadOptions, PlaylistProvider } from './services/playlist-provider'
 export {
   parsePublicPlaylist,
+  parsePublicPlaylistSummaries,
   parsePublicTrack,
   PublicMusicApiProvider,
 } from './services/public-music-api-provider'
 export type { PublicMusicApiProviderOptions } from './services/public-music-api-provider'
+export { PlaylistBrowser } from './services/playlist-browser'
+export type {
+  PlaylistBrowserSelection,
+  PlaylistBrowserState,
+  PlaylistBrowserView,
+} from './services/playlist-browser'
 export type {
   Playlist,
   PlaylistSummary,

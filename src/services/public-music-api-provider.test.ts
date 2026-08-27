@@ -1,7 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
-import { parsePublicPlaylist, PublicMusicApiProvider } from './public-music-api-provider'
+import {
+  parsePublicPlaylist,
+  parsePublicPlaylistSummaries,
+  PublicMusicApiProvider,
+} from './public-music-api-provider'
 
 describe('PublicMusicApiProvider', () => {
+  it('parses public playlist summaries and resolves covers', () => {
+    expect(parsePublicPlaylistSummaries({ data: [
+      { id: 'public', name: 'Public', cover: './cover.jpg', isPublic: true },
+      { name: 'Missing id' },
+    ] }, 'https://blog.example/api/music/playlists')).toEqual([
+      expect.objectContaining({
+        id: 'public',
+        cover: 'https://blog.example/api/music/cover.jpg',
+      }),
+    ])
+  })
+
   it('maps the public backend contract to player songs', () => {
     expect(parsePublicPlaylist({ data: {
       id: 'default',
@@ -61,5 +77,34 @@ describe('PublicMusicApiProvider', () => {
       expect.objectContaining({ id: 'song', src: 'https://blog.example/song.mp3' }),
     ])
     expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('exposes only public playlists for catalog browsing', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: [
+      { id: 'private', name: 'Private', isPublic: false },
+      { id: 'public', name: 'Public', isPublic: true },
+    ] }), { status: 200 }))
+    const provider = new PublicMusicApiProvider('https://blog.example/api/music', {
+      fetcher: fetcher as typeof fetch,
+    })
+
+    await expect(provider.listPlaylists()).resolves.toEqual([
+      expect.objectContaining({ id: 'public' }),
+    ])
+  })
+
+  it('keeps loading a legacy single-playlist response from the list endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: {
+      id: 'legacy',
+      tracks: [{ id: 'song', title: 'Legacy song', audioUrl: '/legacy.mp3' }],
+    } }), { status: 200 }))
+    const provider = new PublicMusicApiProvider('https://blog.example/api/music', {
+      fetcher: fetcher as typeof fetch,
+    })
+
+    await expect(provider.load()).resolves.toEqual([
+      expect.objectContaining({ id: 'song', src: 'https://blog.example/legacy.mp3' }),
+    ])
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 })

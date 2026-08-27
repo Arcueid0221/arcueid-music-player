@@ -31,6 +31,7 @@ arcueid-music-player/
 │   ├── services/
 │   │   ├── playlist-provider.ts       数组、直接 JSON、文件 Provider
 │   │   ├── public-music-api-provider.ts Spring Boot Public API 适配
+│   │   ├── playlist-browser.ts        多歌单目录、浏览状态和详情缓存
 │   │   ├── lyric-parser.ts            LRC/逐字歌词解析
 │   │   ├── lyric-repository.ts        歌词获取、缓存和取消
 │   │   ├── playback-memory.ts         播放记忆
@@ -79,10 +80,8 @@ ArcueidMusicPlayer / createMusicPlayer
 Public Music API
        ▼
 PublicMusicApiProvider
-       ▼
-Song[]
-       ▼
-PlayerController → Store → PlayerView
+       ├── PlaylistBrowser → 浏览中的歌单和歌曲
+       └── Song[] → PlayerController → Store → PlayerView
 ```
 
 约束：
@@ -133,6 +132,8 @@ interface PlaylistProvider {
 
 `playlist-src` 优先于 `music-api`。Public Provider 可以通过 `playlist-id` 直读详情，也可以先读取列表并选择默认公开歌单。
 
+`PlaylistBrowser` 只保存目录层级、当前查看的歌单、详情缓存和“哪个歌单属于当前播放队列”的标识。它不操作 `AudioEngine`，也不修改 `PlayerState.playlist`。用户浏览其他歌单时音频继续播放；点击浏览结果中的歌曲后，`PlayerController.playPlaylist()` 才替换实际队列。
+
 ### 4.4 UI
 
 `PlayerView` 创建一次稳定的 Shadow DOM，订阅 Store 并把点击、键盘和指针输入转换为 Controller 方法。`playlist-mode="readonly"` 下，它不渲染队列管理按钮，并在事件层拒绝导入、删除和排序。
@@ -168,7 +169,24 @@ Canvas 分成两个消费者：主 `WaveformRenderer` 和 `NowPlayingRail`。二
   → PlayerView 渲染
 ```
 
-### 5.2 播放时间与歌词
+### 5.2 多歌单浏览与播放切换
+
+```text
+组件读取 music-api
+  → PlaylistBrowser 读取公开歌单目录
+  → 选择 playlist-id、默认歌单或第一个公开歌单
+  → 默认直接显示第二级歌曲列表并初始化播放队列
+
+返回第一级或浏览其他歌单
+  → 只更新 PlaylistBrowser
+  → 当前 PlayerState.playlist 与音频保持不变
+
+点击浏览歌单中的歌曲
+  → PlayerController.playPlaylist(songs, index)
+  → 原子替换实际队列并播放所选歌曲
+```
+
+### 5.3 播放时间与歌词
 
 ```text
 AudioEngine timeupdate
@@ -178,7 +196,7 @@ AudioEngine timeupdate
   → PlayerView / LyricView / MediaSession
 ```
 
-### 5.3 波形 Seek
+### 5.4 波形 Seek
 
 ```text
 Pointer 拖动
@@ -191,7 +209,7 @@ Pointer 松开
 
 拖动期间不会连续修改媒体时间，从而减少 Safari/iOS 的重复 Range 请求。
 
-### 5.4 浮动拖拽
+### 5.5 浮动拖拽
 
 ```text
 独立拖拽手柄

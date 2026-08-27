@@ -2,6 +2,8 @@
 
 一个基于原生 Web Components、TypeScript、HTMLMediaElement 和 Web Audio 的博客音乐播放器。前台默认是只读播放组件，支持公开音乐 API、同步歌词、波形进度、Media Session、播放记忆以及可收缩、拖拽、侧边吸附的浮动窗口。
 
+配置 `music-api` 后，播放队列面板提供两级浏览：默认直接显示默认歌单歌曲，返回后可以选择其他公开歌单。浏览不会打断当前音乐，只有点击歌曲才会切换实际播放队列。
+
 ## 开发
 
 ```bash

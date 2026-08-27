@@ -125,6 +125,21 @@ describe('PlayerController', () => {
     expect(store.getState().activeLyricIndex).toBe(0)
   })
 
+  it('replaces the playback queue and starts the selected song once', async () => {
+    const { store, engine, controller } = setup()
+    const otherSongs: Song[] = [
+      { id: 'other-one', title: 'Other one', src: '/other-one.mp3' },
+      { id: 'other-two', title: 'Other two', src: '/other-two.mp3' },
+    ]
+
+    await controller.playPlaylist(otherSongs, 1)
+
+    expect(store.getState().playlist).toEqual(otherSongs)
+    expect(store.getState().currentIndex).toBe(1)
+    expect(engine.loaded.map((song) => song.id)).toEqual(['other-two'])
+    expect(engine.play).toHaveBeenCalledTimes(1)
+  })
+
   it('retries once and then skips a broken track', async () => {
     vi.useFakeTimers()
     const { store, engine, controller } = setup()

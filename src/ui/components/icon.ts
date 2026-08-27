@@ -1,6 +1,7 @@
 import {
   AudioLines,
   Captions,
+  ChevronLeft,
   ChevronDown,
   ChevronUp,
   createElement,
@@ -29,6 +30,7 @@ import {
 export type PlayerIcon =
   | 'audio-lines'
   | 'captions'
+  | 'chevron-left'
   | 'chevron-down'
   | 'chevron-up'
   | 'close'
@@ -54,6 +56,7 @@ export type PlayerIcon =
 const ICONS: Record<PlayerIcon, IconNode> = {
   'audio-lines': AudioLines,
   captions: Captions,
+  'chevron-left': ChevronLeft,
   'chevron-down': ChevronDown,
   'chevron-up': ChevronUp,
   close: X,

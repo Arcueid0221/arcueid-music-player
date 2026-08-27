@@ -15,6 +15,7 @@ export interface PlaylistSummary {
   name: string
   description?: string
   cover?: string
+  trackCount?: number
   isPublic?: boolean
   isDefault?: boolean
 }

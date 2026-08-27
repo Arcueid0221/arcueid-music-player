@@ -4,6 +4,10 @@ import type { PlayerController } from '../core/player-controller'
 import type { PlayerStore } from '../core/player-store'
 import type { PlaylistMode, PlayMode, PlayerState, Song } from '../domain/types'
 import { FilePlaylistProvider } from '../services/playlist-provider'
+import {
+  PlaylistBrowser,
+  type PlaylistBrowserState,
+} from '../services/playlist-browser'
 import { createPlayerIcon, setButtonIcon, type PlayerIcon } from './components/icon'
 import { LyricView } from './components/lyric-view'
 import { NowPlayingRail } from './components/now-playing-rail'
@@ -52,6 +56,8 @@ export class PlayerView {
   private waveformPreviewRatio: number | null = null
   private draggedSongIndex = -1
   private queueQuery = ''
+  private playlistBrowser?: PlaylistBrowser
+  private unsubscribePlaylistBrowser?: () => void
 
   private readonly title: HTMLElement
   private readonly artist: HTMLElement
@@ -71,6 +77,7 @@ export class PlayerView {
   private readonly queueButton: HTMLButtonElement
   private readonly panel: HTMLElement
   private readonly panelTitle: HTMLElement
+  private readonly playlistBackButton: HTMLButtonElement
   private readonly lyricContainer: HTMLElement
   private readonly queueContainer: HTMLElement
   private readonly queueToolbar: HTMLElement
@@ -154,7 +161,10 @@ export class PlayerView {
 
         <section class="detail-panel" hidden>
           <div class="panel-heading">
-            <h3></h3>
+            <div class="panel-title-group">
+              <button class="icon-button compact-control playlist-back" type="button" data-action="playlist-back" hidden></button>
+              <h3></h3>
+            </div>
             <button class="icon-button compact-control" type="button" data-action="close-panel"></button>
           </div>
           <div class="queue-toolbar" hidden>
@@ -213,6 +223,7 @@ export class PlayerView {
     this.queueButton = this.get('[data-panel="queue"]')
     this.panel = this.get('.detail-panel')
     this.panelTitle = this.get('.panel-heading h3')
+    this.playlistBackButton = this.get('[data-action="playlist-back"]')
     this.lyricContainer = this.get('.lyric-list')
     this.queueContainer = this.get('.queue-list')
     this.queueToolbar = this.get('.queue-toolbar')
@@ -239,6 +250,7 @@ export class PlayerView {
     setButtonIcon(this.get('[data-action="next"]'), 'skip-forward', '下一首')
     setButtonIcon(this.lyricButton, 'captions', '歌词')
     setButtonIcon(this.queueButton, 'list-music', '播放队列')
+    setButtonIcon(this.playlistBackButton, 'chevron-left', '返回歌单列表')
     setButtonIcon(this.get('[data-action="close-panel"]'), 'close', '收起面板')
     setButtonIcon(this.get('[data-action="import-playlist"]'), 'list-plus', '导入 JSON 歌单并添加到队列')
     setButtonIcon(this.retryButton, 'refresh', '立即重试当前歌曲')
@@ -277,6 +289,20 @@ export class PlayerView {
     this.render(this.store.getState())
   }
 
+  setPlaylistBrowser(browser?: PlaylistBrowser): void {
+    this.unsubscribePlaylistBrowser?.()
+    this.playlistBrowser = browser
+    this.unsubscribePlaylistBrowser = browser?.subscribe(() => {
+      this.resetQueueSearch()
+      const state = this.store.getState()
+      this.renderPanel(state)
+      this.renderQueue(state)
+    })
+    this.resetQueueSearch()
+    this.lastPlaylist = undefined
+    this.render(this.store.getState())
+  }
+
   setCollapsed(value: boolean): void {
     this.floatingPlayer.setCollapsed(value)
   }
@@ -297,6 +323,7 @@ export class PlayerView {
     this.eventController.abort()
     this.unsubscribe()
     this.unsubscribeAnalysis()
+    this.unsubscribePlaylistBrowser?.()
     this.analysisSource.destroy()
     this.floatingPlayer.destroy()
     this.waveform.destroy()
@@ -319,6 +346,26 @@ export class PlayerView {
       if (action === 'lyric-earlier') this.controller.setLyricOffset(this.store.getState().lyricOffsetMs - 500)
       if (action === 'lyric-later') this.controller.setLyricOffset(this.store.getState().lyricOffsetMs + 500)
       if (action === 'lyric-reset') this.controller.setLyricOffset(0)
+      if (action === 'playlist-back' && this.usesPlaylistBrowser()) {
+        this.resetQueueSearch()
+        this.playlistBrowser?.showPlaylists()
+      }
+      const playlistId = target.closest<HTMLButtonElement>('[data-playlist-id]')?.dataset.playlistId
+      if (action === 'browse-playlist' && playlistId !== undefined && this.usesPlaylistBrowser()) {
+        this.resetQueueSearch()
+        void this.playlistBrowser?.browse(playlistId).catch(() => undefined)
+      }
+      const browserSongIndex = Number(
+        target.closest<HTMLButtonElement>('[data-browser-song-index]')?.dataset.browserSongIndex,
+      )
+      if (action === 'select-browser-song' && Number.isInteger(browserSongIndex) && this.usesPlaylistBrowser()) {
+        const browserState = this.playlistBrowser!.getState()
+        const playlist = browserState.selectedPlaylist
+        if (playlist && browserState.songs[browserSongIndex]) {
+          this.playlistBrowser?.markPlaybackPlaylist(playlist.id)
+          void this.controller.playPlaylist(browserState.songs, browserSongIndex)
+        }
+      }
       const songIndex = Number(target.closest<HTMLButtonElement>('[data-song-index]')?.dataset.songIndex)
       if (Number.isInteger(songIndex)) {
         if (action === 'select-song') void this.controller.select(songIndex)
@@ -520,19 +567,37 @@ export class PlayerView {
   }
 
   private renderPanel(state: PlayerState): void {
+    const browserState = this.usesPlaylistBrowser() ? this.playlistBrowser?.getState() : undefined
     this.panel.hidden = state.panel === null
-    this.panelTitle.textContent = state.panel === 'lyrics' ? '同步歌词' : '播放队列'
+    this.panelTitle.textContent = state.panel === 'lyrics'
+      ? '同步歌词'
+      : browserState?.view === 'playlists'
+        ? '选择歌单'
+        : browserState?.selectedPlaylist?.name ?? '播放队列'
+    this.playlistBackButton.hidden = state.panel !== 'queue' || !browserState || browserState.view === 'playlists'
     this.lyricContainer.hidden = state.panel !== 'lyrics'
     this.queueContainer.hidden = state.panel !== 'queue'
-    this.queueToolbar.hidden = state.panel !== 'queue'
+    this.queueToolbar.hidden = state.panel !== 'queue' || browserState?.view === 'playlists'
     this.lyricToolbar.hidden = state.panel !== 'lyrics'
     this.lyricOffset.textContent = `偏移 ${(state.lyricOffsetMs / 1000).toFixed(1)} 秒`
-    this.queueFeedback.hidden = state.panel !== 'queue' || (!state.playlistMessage && !state.isPlaylistLoading)
-    this.queueFeedback.textContent = state.isPlaylistLoading ? '正在读取歌单…' : state.playlistMessage ?? ''
+    const browserFeedback = browserState?.isLoading
+      ? '正在读取歌单…'
+      : browserState?.error
+    const queueFeedback = browserState
+      ? browserFeedback
+      : state.isPlaylistLoading ? '正在读取歌单…' : state.playlistMessage
+    this.queueFeedback.hidden = state.panel !== 'queue' || !queueFeedback
+    this.queueFeedback.textContent = queueFeedback ?? ''
   }
 
   private renderQueue(state: PlayerState): void {
     this.queueContainer.replaceChildren()
+    if (this.usesPlaylistBrowser()) {
+      const browserState = this.playlistBrowser!.getState()
+      if (browserState.view === 'playlists') this.renderPlaylistCatalog(browserState)
+      else this.renderBrowsedPlaylist(browserState, state)
+      return
+    }
     const matches = state.playlist
       .map((song, index) => ({ song, index }))
       .filter(({ song }) => !this.queueQuery || [song.title, song.artist, song.album]
@@ -564,9 +629,7 @@ export class PlayerView {
       button.setAttribute('aria-current', index === state.currentIndex ? 'true' : 'false')
       button.setAttribute('aria-label', `${index === state.currentIndex ? '当前播放，' : ''}播放 ${song.title}`)
 
-      const number = document.createElement('span')
-      number.className = 'queue-number'
-      number.textContent = String(index + 1).padStart(2, '0')
+      const artwork = this.createSongArtwork(song, index)
       const copy = document.createElement('span')
       copy.className = 'queue-copy'
       const title = document.createElement('strong')
@@ -574,7 +637,7 @@ export class PlayerView {
       const artist = document.createElement('small')
       artist.textContent = song.artist || '未知艺术家'
       copy.append(title, artist)
-      button.append(number, copy)
+      button.append(artwork, copy)
 
       item.append(button)
       if (this.playlistMode === 'editable') {
@@ -595,6 +658,136 @@ export class PlayerView {
         this.queueContainer.querySelector('.queue-item.is-current')?.scrollIntoView({ block: 'nearest' })
       })
     }
+  }
+
+  private renderPlaylistCatalog(browserState: PlaylistBrowserState): void {
+    if (browserState.isLoading) {
+      this.appendEmptyState('正在读取歌单…')
+      return
+    }
+    if (browserState.error) {
+      this.appendEmptyState(browserState.error)
+      return
+    }
+    if (!browserState.playlists.length) {
+      this.appendEmptyState('暂无公开歌单')
+      return
+    }
+
+    browserState.playlists.forEach((playlist) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'playlist-card'
+      button.dataset.action = 'browse-playlist'
+      button.dataset.playlistId = String(playlist.id)
+      button.classList.toggle('is-playing', String(playlist.id) === String(browserState.playbackPlaylistId))
+      button.setAttribute('aria-label', `查看歌单 ${playlist.name}`)
+
+      const cover = document.createElement('span')
+      cover.className = 'playlist-cover'
+      cover.append(createPlayerIcon('list-music', 20))
+      if (playlist.cover) {
+        const image = document.createElement('img')
+        image.src = playlist.cover
+        image.alt = ''
+        image.loading = 'lazy'
+        image.addEventListener('error', () => image.remove(), { once: true })
+        cover.append(image)
+      }
+
+      const copy = document.createElement('span')
+      copy.className = 'playlist-copy'
+      const name = document.createElement('strong')
+      name.textContent = playlist.name
+      const meta = document.createElement('small')
+      const count = playlist.trackCount === undefined ? undefined : `${playlist.trackCount} 首歌曲`
+      meta.textContent = [count, playlist.description].filter(Boolean).join(' · ') || '公开歌单'
+      copy.append(name, meta)
+
+      const marker = document.createElement('span')
+      marker.className = 'playlist-marker'
+      marker.textContent = String(playlist.id) === String(browserState.playbackPlaylistId) ? '正在播放' : '查看'
+      button.append(cover, copy, marker)
+      this.queueContainer.append(button)
+    })
+  }
+
+  private renderBrowsedPlaylist(browserState: PlaylistBrowserState, state: PlayerState): void {
+    if (browserState.isLoading) {
+      this.appendEmptyState('正在读取歌单…')
+      return
+    }
+    if (browserState.error) {
+      this.appendEmptyState(browserState.error)
+      return
+    }
+    const matches = browserState.songs
+      .map((song, index) => ({ song, index }))
+      .filter(({ song }) => !this.queueQuery || [song.title, song.artist, song.album]
+        .filter(Boolean)
+        .some((value) => value!.toLocaleLowerCase().includes(this.queueQuery)))
+    if (!matches.length) {
+      this.appendEmptyState(browserState.songs.length ? '没有匹配的歌曲' : '这个歌单还没有歌曲')
+      return
+    }
+
+    const isPlaybackPlaylist = String(browserState.selectedPlaylist?.id) === String(browserState.playbackPlaylistId)
+    matches.forEach(({ song, index }) => {
+      const isCurrent = isPlaybackPlaylist && index === state.currentIndex
+      const item = document.createElement('div')
+      item.className = 'queue-item'
+      item.classList.toggle('is-current', isCurrent)
+
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'queue-select'
+      button.dataset.action = 'select-browser-song'
+      button.dataset.browserSongIndex = String(index)
+      button.setAttribute('aria-current', isCurrent ? 'true' : 'false')
+      button.setAttribute('aria-label', `${isCurrent ? '当前播放，' : ''}播放 ${song.title}`)
+
+      const copy = document.createElement('span')
+      copy.className = 'queue-copy'
+      const title = document.createElement('strong')
+      title.textContent = song.title
+      const artist = document.createElement('small')
+      artist.textContent = song.artist || '未知艺术家'
+      copy.append(title, artist)
+      button.append(this.createSongArtwork(song, index), copy)
+      item.append(button)
+      this.queueContainer.append(item)
+    })
+
+    if (!this.queueQuery && isPlaybackPlaylist) {
+      requestAnimationFrame(() => {
+        this.queueContainer.querySelector('.queue-item.is-current')?.scrollIntoView({ block: 'nearest' })
+      })
+    }
+  }
+
+  private createSongArtwork(song: Song, index: number): HTMLElement {
+    const artwork = document.createElement('span')
+    artwork.className = 'queue-artwork'
+    const number = document.createElement('span')
+    number.textContent = String(index + 1).padStart(2, '0')
+    artwork.append(number)
+    const source = song.artwork?.[0]?.src
+    if (source) {
+      const image = document.createElement('img')
+      image.src = source
+      image.alt = ''
+      image.loading = 'lazy'
+      image.addEventListener('error', () => image.remove(), { once: true })
+      artwork.append(image)
+    }
+    return artwork
+  }
+
+  private appendEmptyState(message: string): void {
+    const empty = document.createElement('p')
+    empty.className = 'empty-state'
+    empty.textContent = message
+    this.queueContainer.append(empty)
   }
 
   private createQueueAction(
@@ -619,6 +812,15 @@ export class PlayerView {
     this.importPlaylistButton.hidden = !editable
     this.playlistFileInput.disabled = !editable
     this.queueToolbar.classList.toggle('is-readonly', !editable)
+  }
+
+  private usesPlaylistBrowser(): boolean {
+    return this.playlistMode === 'readonly' && Boolean(this.playlistBrowser)
+  }
+
+  private resetQueueSearch(): void {
+    this.queueQuery = ''
+    this.queueSearch.value = ''
   }
 
   private resetQueueDragState(): void {

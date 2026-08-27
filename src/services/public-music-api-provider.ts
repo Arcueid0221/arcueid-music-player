@@ -79,7 +79,7 @@ export function parsePublicPlaylist(value: unknown, baseUrl: string): Song[] {
   return source.map((entry, index) => parsePublicTrack(extractTrack(entry), baseUrl, index))
 }
 
-function extractPlaylistSummaries(value: unknown): PlaylistSummary[] {
+export function parsePublicPlaylistSummaries(value: unknown, baseUrl: string): PlaylistSummary[] {
   const payload = unwrapData(value)
   const source = Array.isArray(payload) ? payload : asRecord(payload)?.playlists
   if (!Array.isArray(source)) throw new Error('公开歌单列表响应缺少 playlists 数组')
@@ -90,7 +90,12 @@ function extractPlaylistSummaries(value: unknown): PlaylistSummary[] {
       id: record.id,
       name: optionalString(record.name) ?? String(record.id),
       description: optionalString(record.description),
-      cover: optionalString(record.cover),
+      cover: optionalString(record.cover)
+        ? resolveResource(optionalString(record.cover)!, baseUrl)
+        : undefined,
+      trackCount: typeof record.trackCount === 'number' && Number.isFinite(record.trackCount)
+        ? Math.max(Math.trunc(record.trackCount), 0)
+        : undefined,
       isPublic: typeof record.isPublic === 'boolean' ? record.isPublic : undefined,
       isDefault: record.isDefault === true,
     }]
@@ -109,7 +114,7 @@ export class PublicMusicApiProvider implements PlaylistProvider {
 
   constructor(baseUrl: string, private readonly options: PublicMusicApiProviderOptions = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, '')
-    this.fetcher = options.fetcher ?? fetch
+    this.fetcher = options.fetcher ?? ((input, init) => fetch(input, init))
   }
 
   async load(options: PlaylistLoadOptions = {}): Promise<Song[]> {
@@ -122,15 +127,26 @@ export class PublicMusicApiProvider implements PlaylistProvider {
     const response = await this.fetcher(listUrl, { signal: options.signal })
     if (!response.ok) throw new Error(`公开歌单列表请求失败（HTTP ${response.status}）`)
     const payload = await response.json()
-
     if (hasTracks(payload)) return parsePublicPlaylist(payload, response.url || listUrl)
-    const playlists = extractPlaylistSummaries(payload).filter((playlist) => playlist.isPublic !== false)
+    const playlists = parsePublicPlaylistSummaries(payload, response.url || listUrl)
+      .filter((playlist) => playlist.isPublic !== false)
     const selected = playlists.find((playlist) => playlist.isDefault) ?? playlists[0]
     if (!selected) throw new Error('公开音乐 API 没有可播放歌单')
     return this.loadPlaylist(selected.id, options.signal)
   }
 
-  private async loadPlaylist(playlistId: string | number, signal?: AbortSignal): Promise<Song[]> {
+  async listPlaylists(options: PlaylistLoadOptions = {}): Promise<PlaylistSummary[]> {
+    if (!this.baseUrl) throw new Error('Public Music API 地址不能为空')
+    const listUrl = `${this.baseUrl}/playlists`
+    const response = await this.fetcher(listUrl, { signal: options.signal })
+    if (!response.ok) throw new Error(`公开歌单列表请求失败（HTTP ${response.status}）`)
+    const payload = await response.json()
+    if (hasTracks(payload)) throw new Error('公开歌单列表接口返回了单个歌单，无法浏览歌单目录')
+    return parsePublicPlaylistSummaries(payload, response.url || listUrl)
+      .filter((playlist) => playlist.isPublic !== false)
+  }
+
+  async loadPlaylist(playlistId: string | number, signal?: AbortSignal): Promise<Song[]> {
     const url = `${this.baseUrl}/playlists/${encodeURIComponent(String(playlistId))}`
     const response = await this.fetcher(url, { signal })
     if (!response.ok) throw new Error(`公开歌单请求失败（HTTP ${response.status}）`)

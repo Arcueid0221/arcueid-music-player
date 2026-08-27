@@ -13,6 +13,7 @@ import {
   type PlaylistProvider,
 } from './services/playlist-provider'
 import { PublicMusicApiProvider } from './services/public-music-api-provider'
+import { PlaylistBrowser } from './services/playlist-browser'
 import styles from './ui/player.css?inline'
 import { PlayerView } from './ui/player-view'
 import type { DockSidePreference } from './ui/floating-player'
@@ -47,6 +48,7 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
   private playerStore?: PlayerStore
   private controller?: PlayerController
   private view?: PlayerView
+  private playlistBrowser?: PlaylistBrowser
   private publicEventsCleanup?: () => void
   private readonly themeMedia = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-color-scheme: dark)')
   private songs: Song[] = demoPlaylist
@@ -128,9 +130,11 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     this.removeEventListener('keydown', this.handleKeydown)
     this.themeMedia?.removeEventListener('change', this.handleThemeChange)
     this.publicEventsCleanup?.()
+    this.playlistBrowser?.destroy()
     this.view?.destroy()
     this.controller?.destroy()
     this.view = undefined
+    this.playlistBrowser = undefined
     this.controller = undefined
     this.playerStore = undefined
     this.publicEventsCleanup = undefined
@@ -273,6 +277,9 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
 
   private loadConfiguredPlaylist(): void {
     if (!this.controller) return
+    this.playlistBrowser?.destroy()
+    this.playlistBrowser = undefined
+    this.view?.setPlaylistBrowser(undefined)
     const playlistSrc = this.getAttribute('playlist-src')
     if (playlistSrc) {
       void this.controller.loadPlaylist(new JsonPlaylistProvider(playlistSrc)).catch(() => undefined)
@@ -281,7 +288,28 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     const musicApi = this.getAttribute('music-api')
     if (!musicApi) return
     const playlistId = this.getAttribute('playlist-id') || undefined
-    void this.controller.loadPlaylist(new PublicMusicApiProvider(musicApi, { playlistId })).catch(() => undefined)
+    const provider = new PublicMusicApiProvider(musicApi)
+    const browser = new PlaylistBrowser(provider)
+    this.playlistBrowser = browser
+    this.view?.setPlaylistBrowser(browser)
+    void this.controller.loadPlaylist({
+      load: async ({ signal } = {}) => {
+        try {
+          const selection = await browser.initialize(playlistId, signal)
+          return selection.songs
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('无法浏览歌单目录')) {
+            if (this.playlistBrowser === browser) {
+              browser.destroy()
+              this.playlistBrowser = undefined
+              this.view?.setPlaylistBrowser(undefined)
+            }
+            return new PublicMusicApiProvider(musicApi, { playlistId }).load({ signal })
+          }
+          throw error
+        }
+      },
+    }).catch(() => undefined)
   }
 
   private applyTheme(): void {
