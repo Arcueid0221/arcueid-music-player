@@ -21,8 +21,13 @@ export {
   parsePlaylist,
 } from './services/playlist-provider'
 export type { PlaylistLoadOptions, PlaylistProvider } from './services/playlist-provider'
+export { ConfigPlaylistProvider, parsePlaylistConfig } from './services/config-playlist-provider'
+export type { ConfigPlaylistProviderOptions, ParsedPlaylistCatalog } from './services/config-playlist-provider'
+export { PlaylistCatalogUnavailableError } from './services/playlist-catalog-provider'
+export type { PlaylistCatalogProvider } from './services/playlist-catalog-provider'
 export {
   parsePublicPlaylist,
+  parsePublicResolvedPlaylist,
   parsePublicPlaylistSummaries,
   parsePublicTrack,
   PublicMusicApiProvider,
@@ -35,8 +40,11 @@ export type {
   PlaylistBrowserView,
 } from './services/playlist-browser'
 export type {
-  Playlist,
   PlaylistSummary,
+  ResolvedPlaylist,
+} from './domain/playlist-catalog'
+export type {
+  Playlist,
   PlaylistTrack,
   PublicMusicApiEnvelope,
   Track,

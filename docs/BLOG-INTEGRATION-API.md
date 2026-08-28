@@ -106,7 +106,47 @@ import 'arcueid-music-player'
 
 歌单详情会在组件实例生命周期内缓存。`playlist-src` 和显式 `editable` 模式继续使用原有单队列界面。
 
-### 3.3 使用现有单一 JSON 接口
+### 3.3 使用静态 JSON 多歌单
+
+静态站点、对象存储或 CDN 可以直接提供多歌单配置，不需要 Spring Boot、MySQL 或 MinIO：
+
+```vue
+<arcueid-music-player
+  playlist-config="/music/playlists.json"
+  playlist-mode="readonly"
+/>
+```
+
+`playlists.json` 示例：
+
+```json
+{
+  "defaultPlaylistId": "focus",
+  "playlists": [
+    {
+      "id": "focus",
+      "name": "专注",
+      "description": "适合工作时播放",
+      "cover": "./covers/focus.jpg",
+      "songs": [
+        {
+          "id": "track-1",
+          "title": "Example",
+          "artist": "Artist",
+          "src": "./audio/example.mp3",
+          "lyricsUrl": "./lyrics/example.lrc"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`id` 和 `name` 必填，歌单 ID 必须唯一；`songs` 必须是数组但可以为空。`defaultPlaylistId` 必须指向已有歌单，省略时选择唯一的 `isDefault: true` 歌单或第一项。`playlist-id` 属性可以覆盖默认选择。配置文件只请求一次，歌单封面、歌曲、歌词和 artwork 相对 URL 都以配置文件的最终响应 URL 为基准。
+
+与现有 API 模式一致，两级歌单目录在 `playlist-mode="readonly"` 下启用；显式 `editable` 时只载入默认或指定歌单，并继续使用原有单队列编辑界面。
+
+### 3.4 使用现有单一 JSON 接口
 
 如果 Spring Boot 已经提供直接返回歌曲数组的接口，可以继续使用：
 
@@ -137,22 +177,177 @@ import 'arcueid-music-player'
 
 对象键也可以使用 `songs`。
 
-### 3.4 数据源优先级
+### 3.5 数据源优先级
 
 组件连接或相关属性变化时按以下优先级加载：
 
-1. `playlist-src`：使用 `JsonPlaylistProvider` 直接读取歌曲 JSON；
-2. `music-api` + 可选 `playlist-id`：使用 `PublicMusicApiProvider`；
-3. 两者都没有：使用通过 `player.playlist`、`createMusicPlayer({ playlist })` 提供的数据；未提供时使用仓库演示歌单。
+1. `playlist-config`：使用 `ConfigPlaylistProvider` 读取多歌单 JSON；
+2. `playlist-src`：使用 `JsonPlaylistProvider` 直接读取歌曲 JSON；
+3. `music-api` + 可选 `playlist-id`：使用 `PublicMusicApiProvider`；
+4. 三者都没有：使用通过 `player.playlist`、`createMusicPlayer({ playlist })` 提供的数据；未提供时使用仓库演示歌单。
 
-同时配置 `playlist-src` 和 `music-api` 时，`playlist-src` 绝对优先；它加载失败时不会自动回退到 `music-api`。
+同时配置多个数据源时严格按上述顺序选择；加载失败不会自动回退到下一数据源。检测到任一外部数据源时，播放器以空队列启动，加载失败后仍保持为空；只有完全未配置外部数据源时才使用 `playlist` 或内置演示歌单。
+
+### 3.6 三种歌单源与参数详解
+
+三种来源最终都会转换成播放器内部的 `Song[]`；`playlist-config` 和 `music-api` 还会转换成统一的 `ResolvedPlaylist`，因此共用多歌单目录、详情缓存和播放切换逻辑。
+
+| 项目 | `playlist-config` | `playlist-src` | `music-api` |
+| --- | --- | --- | --- |
+| 数据来源 | 静态多歌单 JSON | 静态或动态单歌曲列表 JSON | 两级 HTTP API |
+| Provider | `ConfigPlaylistProvider` | `JsonPlaylistProvider` | `PublicMusicApiProvider` |
+| 多歌单目录 | 支持 | 不支持 | 支持 |
+| 歌单名称、描述、封面 | 支持 | 不支持 | 支持 |
+| `playlist-id` | 覆盖默认歌单 | 忽略 | 指定公开歌单 |
+| `readonly` | 显示两级目录 | 显示单队列 | 显示两级目录 |
+| `editable` | 只加载默认/指定歌单并编辑当前内存队列 | 编辑当前内存队列 | 只加载默认/指定歌单并编辑当前内存队列 |
+| 后端依赖 | 无 | 无；URL 也可以是任意返回 JSON 的接口 | 需要兼容的 HTTP API |
+| 写回来源 | 不会 | 不会 | 不会调用后台写接口 |
+
+#### 3.6.1 `playlist-config`：静态多歌单
+
+HTML 参数：
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `playlist-config` | 是 | 配置 JSON URL；相对 URL 以博客页面地址解析 |
+| `playlist-id` | 否 | 覆盖 JSON 中的默认歌单；找不到时组件目录模式回退到配置默认项 |
+| `playlist-mode` | 否 | `readonly`（默认）显示多歌单目录；`editable` 只编辑默认/指定歌单的当前内存副本 |
+
+根对象字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `defaultPlaylistId` | `string \| number` | 否 | 必须匹配一个歌单 ID；优先于歌单级 `isDefault` |
+| `playlists` | `PlaylistConfigItem[]` | 是 | 至少包含一个歌单 |
+
+每个 `PlaylistConfigItem`：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `id` | `string \| number` | 是 | 在整个配置中唯一；数字 `1` 和字符串 `"1"` 视为同一个 ID |
+| `name` | `string` | 是 | 歌单目录显示名称 |
+| `description` | `string` | 否 | 歌单卡片辅助文字 |
+| `cover` | `string` | 否 | 歌单封面 URL，相对于配置文件最终响应 URL 解析 |
+| `isDefault` | `boolean` | 否 | 未提供 `defaultPlaylistId` 时可标记默认歌单；此时最多一个为 `true` |
+| `songs` | `SongInput[]` | 是 | 可以为空；歌曲数由播放器计算，不需要填写 `trackCount` |
+
+默认歌单选择顺序：组件 `playlist-id` → `defaultPlaylistId` → 唯一的 `isDefault: true` → 第一项。Provider 在实例生命周期内只请求一次配置文件，目录与详情读取共用缓存。
+
+#### 3.6.2 `playlist-src`：直接单歌单
+
+HTML 参数：
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `playlist-src` | 是 | 返回歌曲列表 JSON 的 URL |
+| `playlist-mode` | 否 | `readonly`（默认）只播放；`editable` 显示导入、删除和排序控件 |
+| `playlist-id` | 不适用 | `playlist-src` 没有歌单目录，因此该属性会被忽略 |
+
+响应可以使用三种等价格式：
+
+```json
+[
+  { "id": "one", "title": "One", "src": "./one.mp3" }
+]
+```
+
+```json
+{
+  "songs": [
+    { "id": "one", "title": "One", "src": "./one.mp3" }
+  ]
+}
+```
+
+```json
+{
+  "playlist": [
+    { "id": "one", "title": "One", "src": "./one.mp3" }
+  ]
+}
+```
+
+它只描述歌曲队列，不支持歌单名称、歌单封面、默认歌单或多个歌单。如果未来需要这些信息，应改用 `playlist-config`。
+
+#### 3.6.3 `music-api`：Aurora/Spring Boot API
+
+HTML 参数：
+
+| 参数 | 必填 | 说明 |
+| --- | --- | --- |
+| `music-api` | 是 | API 根地址；结尾斜杠会被移除，例如 `/api/music` |
+| `playlist-id` | 否 | 提供时指定初始歌单；省略时从列表选择 `isDefault` 或第一项 |
+| `playlist-mode` | 否 | `readonly`（默认）显示公开多歌单目录；`editable` 只操作当前内存队列，不写回 API |
+
+Provider 请求：
+
+| 请求 | 用途 |
+| --- | --- |
+| `GET {music-api}/playlists` | 获取歌单目录和默认项 |
+| `GET {music-api}/playlists/{playlist-id}` | 获取指定歌单歌曲详情 |
+
+列表项字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `string \| number` | 是 | 歌单 ID |
+| `name` | `string` | 否 | 缺失时使用 ID 文本 |
+| `description` | `string` | 否 | 歌单说明 |
+| `cover` | `string` | 否 | 歌单封面 URL |
+| `trackCount` | `number` | 否 | 目录显示歌曲数；播放器会规范为非负整数 |
+| `isPublic` | `boolean` | 否 | 明确为 `false` 时从公开目录过滤 |
+| `isDefault` | `boolean` | 否 | 默认歌单标志 |
+
+列表响应可直接是数组、`{ "data": [...] }`，或 `{ "data": { "playlists": [...] } }`。详情响应可直接返回对象或包在 `data` 中；歌曲数组键接受 `tracks`、`playlistTracks` 或兼容键 `songs`。关联形式的 `PlaylistTrack` 必须展开 `track`。
+
+如果 API 希望表示“成功加载但没有歌曲”，列表中仍应返回一个歌单，详情返回 `"tracks": []`。列表直接为空表示没有可浏览歌单，会作为加载错误处理。
+
+#### 3.6.4 两种 JSON 来源共用的 `SongInput`
+
+`playlist-config.songs` 与 `playlist-src` 使用相同字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `string \| number` | 否 | 缺失时根据 `src` 和数组位置生成稳定于本次解析的 ID |
+| `title` | `string` | 是 | 歌曲标题 |
+| `artist` | `string` | 否 | 艺术家 |
+| `album` | `string` | 否 | 专辑 |
+| `src` | `string` | 是 | 音频 URL；相对于 JSON 最终响应 URL 解析 |
+| `duration` | `number` | 否 | 秒数；负值规范为 `0` |
+| `artwork` | `MediaImage[]` | 否 | 每项至少包含 `src`，可带 `sizes`、`type` |
+| `crossOrigin` | `"" \| "anonymous" \| "use-credentials"` | 否 | 跨域媒体元素设置；波形分析常用 `anonymous` |
+| `lyrics` | `string \| LyricLine[]` | 否 | 内联 LRC 文本或结构化歌词 |
+| `lyricsUrl` | `string` | 否 | 外部歌词 URL；相对于 JSON 最终响应 URL 解析 |
+
+结构化 `LyricLine` 使用 `{ timeMs, text, kind?, words? }`；逐字项使用 `{ startMs, endMs?, text }`。`artwork[].src`、`src` 和 `lyricsUrl` 都会解析相对路径。
+
+API 的 Track 使用 `audioUrl`、`lyricUrl`、`cover`，Provider 分别映射为 `Song.src`、`Song.lyricsUrl`、`Song.artwork[0].src`；兼容情况下也接受 `src` 和 `lyricsUrl`。
+
+#### 3.6.5 三源共用的播放器参数
+
+| 参数 | 默认值 | 作用 |
+| --- | --- | --- |
+| `playlist-mode` | `readonly` | `readonly` 隐藏导入、删除、排序；`editable` 只修改浏览器内存 |
+| `play-mode` | `order` | `order` 顺序、`single` 单曲循环、`random` 随机 |
+| `volume` | `0.8` | `0`–`1` 初始/当前音量 |
+| `theme` | `system` | `light`、`dark` 或跟随系统 |
+| `remember-playback` | 关闭 | 保存歌曲 ID、进度、音量、静音和播放模式 |
+| `memory-key` | 内置默认键 | 多实例或多页面隔离播放记忆 |
+| `collapsed` | 关闭 | 初始化或动态收缩为迷你播放器 |
+| `dock-side` | `auto` | `auto`、`left`、`right` 停靠策略 |
+| `remember-position` | 关闭 | 保存位置、停靠侧与收缩状态 |
+| `position-key` | 派生默认键 | 多实例隔离位置记忆 |
+
+布尔属性按“是否存在”判断；例如 `remember-playback="false"` 仍会启用，应通过移除属性关闭。外部 JSON、API、音频、歌词和封面必须满足浏览器同源策略或提供正确 CORS 响应。
 
 ## 4. HTML 属性
 
 | 属性 | 值/默认值 | 作用 | 动态变化 |
 | --- | --- | --- | --- |
+| `playlist-config` | URL | 静态多歌单 JSON 地址，优先级最高 | 重新加载歌单 |
 | `music-api` | URL | Public Music API 根地址，例如 `/api/music` | 重新加载歌单 |
-| `playlist-id` | string/number | 指定公开歌单；省略时自动发现默认歌单 | 重新加载歌单 |
+| `playlist-id` | string/number | 指定 Config/API 歌单；省略时自动发现默认歌单 | 重新加载歌单 |
 | `playlist-src` | URL | 直接歌曲 JSON 地址，优先于 `music-api` | 重新加载歌单 |
 | `playlist-mode` | `readonly` / `editable`，默认 `readonly` | 控制是否显示导入、删除和排序 UI | 立即更新 UI |
 | `play-mode` | `order` / `single` / `random`，默认 `order` | 播放顺序 | 立即生效 |
@@ -198,8 +393,7 @@ import { createMusicPlayer } from 'arcueid-music-player'
 
 const instance = createMusicPlayer({
   target: document.querySelector('#music-player')!,
-  musicApi: '/api/music',
-  playlistId: 'default',
+  playlistConfig: '/music/playlists.json',
   playlistMode: 'readonly',
   playMode: 'order',
   theme: 'system',
@@ -358,6 +552,16 @@ interface PublicMusicApiEnvelope<T> {
 `PlaylistTrack.track` 在类型上可选，但当前播放器要直接播放关联项，因此详情响应中的关联形式必须展开 `track`。
 Provider 不读取 `PlaylistTrack.order` 后再排序；Spring Boot 必须按最终播放顺序返回数组。
 
+这里的 `Playlist` 是为兼容 Aurora 保留的后端 DTO。播放器内部统一使用来源无关的运行时模型：
+
+```ts
+interface ResolvedPlaylist extends PlaylistSummary {
+  songs: Song[]
+}
+```
+
+`ConfigPlaylistProvider` 和 `PublicMusicApiProvider` 都实现 `PlaylistCatalogProvider` 并输出该模型，因此 UI 不依赖数据来自静态 JSON 还是 API。
+
 ## 9. Spring Boot Public Music API 契约
 
 ### 9.1 指定歌单
@@ -465,7 +669,7 @@ await player.loadPlaylist(provider)
 - 单曲缺少 `title` 或 `audioUrl` 时指出歌曲序号。
 - Provider 错误由 Controller 写入 `playlistMessage`；不会破坏已经加载的 AudioEngine、歌词或 Media Session 服务。
 - `AbortSignal` 会传给 fetch，后发起的歌单请求可以取消旧请求。
-- 通过 `music-api` / `playlist-src` 属性触发的加载失败不会派发媒体 `error` 事件；需要程序化确认结果时，应使用并捕获 `loadPlaylist(provider)` 返回的 Promise。
+- 通过 `playlist-config` / `music-api` / `playlist-src` 属性触发的加载失败不会派发媒体 `error` 事件；需要程序化确认结果时，应使用并捕获 `loadPlaylist(provider)` 返回的 Promise。
 
 ## 10. 浮动播放器
 
@@ -529,8 +733,8 @@ Content-Range: bytes start-end/total
 
 - [ ] Vue 3 已把 `arcueid-music-player` 配置为自定义元素。
 - [ ] 前台使用 `playlist-mode="readonly"`。
-- [ ] `playlist-src` 与 `music-api` 只选择一种主数据源。
-- [ ] Spring Boot 列表和详情响应符合本文结构。
+- [ ] `playlist-config`、`playlist-src` 与 `music-api` 只选择一种主数据源。
+- [ ] 静态配置或 Spring Boot 列表和详情响应符合本文结构。
 - [ ] 默认歌单存在，或前台明确配置 `playlist-id`。
 - [ ] `audioUrl`、`lyricUrl`、`cover` 能从博客 Origin 访问。
 - [ ] 音频支持 `HEAD`、Range 和 `206 Partial Content`。

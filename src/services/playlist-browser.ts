@@ -1,6 +1,6 @@
-import type { PlaylistSummary } from '../domain/music-api'
+import type { PlaylistSummary, ResolvedPlaylist } from '../domain/playlist-catalog'
 import type { Song } from '../domain/types'
-import { PublicMusicApiProvider } from './public-music-api-provider'
+import type { PlaylistCatalogProvider } from './playlist-catalog-provider'
 
 export type PlaylistBrowserView = 'playlists' | 'tracks'
 
@@ -29,10 +29,10 @@ export class PlaylistBrowser {
     isLoading: false,
   }
   private readonly listeners = new Set<PlaylistBrowserListener>()
-  private readonly songCache = new Map<string, Song[]>()
+  private readonly playlistCache = new Map<string, ResolvedPlaylist>()
   private request?: AbortController
 
-  constructor(private readonly provider: PublicMusicApiProvider) {}
+  constructor(private readonly provider: PlaylistCatalogProvider) {}
 
   getState(): PlaylistBrowserState {
     return {
@@ -56,18 +56,19 @@ export class PlaylistBrowser {
         ? playlists.find((playlist) => String(playlist.id) === String(preferredId))
         : undefined
       const playlist = selected ?? playlists.find((item) => item.isDefault) ?? playlists[0]
-      if (!playlist) throw new Error('公开音乐 API 没有可浏览歌单')
-      const songs = await this.loadSongs(playlist.id, request.signal)
+      if (!playlist) throw new Error('数据源没有可浏览歌单')
+      const resolved = await this.loadResolvedPlaylist(playlist.id, request.signal)
+      const selectedPlaylist = { ...this.toSummary(resolved), ...playlist }
       if (request.signal.aborted) throw new DOMException('Aborted', 'AbortError')
       this.setState({
         playlists,
-        selectedPlaylist: playlist,
-        songs,
-        playbackPlaylistId: playlist.id,
+        selectedPlaylist,
+        songs: resolved.songs,
+        playbackPlaylistId: selectedPlaylist.id,
         view: 'tracks',
         isLoading: false,
       })
-      return { playlist, songs: [...songs] }
+      return { playlist: selectedPlaylist, songs: [...resolved.songs] }
     } catch (error) {
       if (!request.signal.aborted) {
         this.setState({ isLoading: false, error: error instanceof Error ? error.message : '歌单加载失败' })
@@ -89,10 +90,11 @@ export class PlaylistBrowser {
     const request = this.beginRequest()
     this.setState({ selectedPlaylist: playlist, songs: [], view: 'tracks', isLoading: true, error: undefined })
     try {
-      const songs = await this.loadSongs(playlist.id, request.signal)
+      const resolved = await this.loadResolvedPlaylist(playlist.id, request.signal)
+      const selectedPlaylist = { ...this.toSummary(resolved), ...playlist }
       if (request.signal.aborted) throw new DOMException('Aborted', 'AbortError')
-      this.setState({ songs, isLoading: false })
-      return { playlist, songs: [...songs] }
+      this.setState({ selectedPlaylist, songs: resolved.songs, isLoading: false })
+      return { playlist: selectedPlaylist, songs: [...resolved.songs] }
     } catch (error) {
       if (!request.signal.aborted) {
         this.setState({ isLoading: false, error: error instanceof Error ? error.message : '歌单加载失败' })
@@ -110,16 +112,23 @@ export class PlaylistBrowser {
   destroy(): void {
     this.request?.abort()
     this.listeners.clear()
-    this.songCache.clear()
+    this.playlistCache.clear()
   }
 
-  private async loadSongs(playlistId: string | number, signal: AbortSignal): Promise<Song[]> {
+  private async loadResolvedPlaylist(
+    playlistId: string | number,
+    signal: AbortSignal,
+  ): Promise<ResolvedPlaylist> {
     const key = String(playlistId)
-    const cached = this.songCache.get(key)
-    if (cached) return [...cached]
-    const songs = await this.provider.loadPlaylist(playlistId, signal)
-    this.songCache.set(key, [...songs])
-    return songs
+    const cached = this.playlistCache.get(key)
+    if (cached) return { ...cached, songs: [...cached.songs] }
+    const playlist = await this.provider.getPlaylist(playlistId, { signal })
+    this.playlistCache.set(key, { ...playlist, songs: [...playlist.songs] })
+    return playlist
+  }
+
+  private toSummary({ songs: _songs, ...playlist }: ResolvedPlaylist): PlaylistSummary {
+    return playlist
   }
 
   private beginRequest(externalSignal?: AbortSignal): AbortController {

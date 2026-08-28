@@ -1,6 +1,11 @@
-import type { Playlist, PlaylistSummary, PlaylistTrack, Track } from '../domain/music-api'
+import type { PlaylistSummary, ResolvedPlaylist } from '../domain/playlist-catalog'
+import type { Playlist, PlaylistTrack, Track } from '../domain/music-api'
 import type { Song } from '../domain/types'
-import type { PlaylistLoadOptions, PlaylistProvider } from './playlist-provider'
+import {
+  PlaylistCatalogUnavailableError,
+  type PlaylistCatalogProvider,
+} from './playlist-catalog-provider'
+import type { PlaylistLoadOptions } from './playlist-provider'
 
 type Fetcher = typeof fetch
 
@@ -102,13 +107,37 @@ export function parsePublicPlaylistSummaries(value: unknown, baseUrl: string): P
   })
 }
 
+export function parsePublicResolvedPlaylist(
+  value: unknown,
+  baseUrl: string,
+  fallbackId: string | number,
+): ResolvedPlaylist {
+  const payload = unwrapData(value)
+  const record = asRecord(payload)
+  const id = typeof record?.id === 'string' || typeof record?.id === 'number'
+    ? record.id
+    : fallbackId
+  const songs = parsePublicPlaylist(value, baseUrl)
+  const cover = optionalString(record?.cover)
+  return {
+    id,
+    name: optionalString(record?.name) ?? String(id),
+    description: optionalString(record?.description),
+    cover: cover ? resolveResource(cover, baseUrl) : undefined,
+    trackCount: songs.length,
+    isPublic: typeof record?.isPublic === 'boolean' ? record.isPublic : undefined,
+    isDefault: record?.isDefault === true,
+    songs,
+  }
+}
+
 function hasTracks(value: unknown): boolean {
   const payload = unwrapData(value)
   const record = asRecord(payload)
   return Array.isArray(record?.tracks) || Array.isArray(record?.playlistTracks) || Array.isArray(record?.songs)
 }
 
-export class PublicMusicApiProvider implements PlaylistProvider {
+export class PublicMusicApiProvider implements PlaylistCatalogProvider {
   private readonly baseUrl: string
   private readonly fetcher: Fetcher
 
@@ -141,16 +170,25 @@ export class PublicMusicApiProvider implements PlaylistProvider {
     const response = await this.fetcher(listUrl, { signal: options.signal })
     if (!response.ok) throw new Error(`公开歌单列表请求失败（HTTP ${response.status}）`)
     const payload = await response.json()
-    if (hasTracks(payload)) throw new Error('公开歌单列表接口返回了单个歌单，无法浏览歌单目录')
+    if (hasTracks(payload)) {
+      throw new PlaylistCatalogUnavailableError('公开歌单列表接口返回了单个歌单，无法浏览歌单目录')
+    }
     return parsePublicPlaylistSummaries(payload, response.url || listUrl)
       .filter((playlist) => playlist.isPublic !== false)
   }
 
   async loadPlaylist(playlistId: string | number, signal?: AbortSignal): Promise<Song[]> {
+    return (await this.getPlaylist(playlistId, { signal })).songs
+  }
+
+  async getPlaylist(
+    playlistId: string | number,
+    options: PlaylistLoadOptions = {},
+  ): Promise<ResolvedPlaylist> {
     const url = `${this.baseUrl}/playlists/${encodeURIComponent(String(playlistId))}`
-    const response = await this.fetcher(url, { signal })
+    const response = await this.fetcher(url, { signal: options.signal })
     if (!response.ok) throw new Error(`公开歌单请求失败（HTTP ${response.status}）`)
-    return parsePublicPlaylist(await response.json(), response.url || url)
+    return parsePublicResolvedPlaylist(await response.json(), response.url || url, playlistId)
   }
 }
 

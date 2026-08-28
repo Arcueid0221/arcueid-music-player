@@ -21,6 +21,7 @@ arcueid-music-player/
 ├── src/
 │   ├── domain/
 │   │   ├── types.ts                   Song、PlayerState、事件 detail
+│   │   ├── playlist-catalog.ts        来源无关的歌单目录与运行时模型
 │   │   ├── music-api.ts               Track、Playlist、PlaylistTrack
 │   │   └── playlist.ts                纯队列索引和排序算法
 │   ├── core/
@@ -30,6 +31,8 @@ arcueid-music-player/
 │   │   └── player-controller.ts       播放、切歌、歌词和错误恢复编排
 │   ├── services/
 │   │   ├── playlist-provider.ts       数组、直接 JSON、文件 Provider
+│   │   ├── playlist-catalog-provider.ts 多歌单 Provider 契约
+│   │   ├── config-playlist-provider.ts 静态多歌单 JSON 适配
 │   │   ├── public-music-api-provider.ts Spring Boot Public API 适配
 │   │   ├── playlist-browser.ts        多歌单目录、浏览状态和详情缓存
 │   │   ├── lyric-parser.ts            LRC/逐字歌词解析
@@ -77,11 +80,14 @@ ArcueidMusicPlayer / createMusicPlayer
        │                         │
        └────────用户意图─────────┘
 
-Public Music API
-       ▼
-PublicMusicApiProvider
-       ├── PlaylistBrowser → 浏览中的歌单和歌曲
-       └── Song[] → PlayerController → Store → PlayerView
+Static JSON                 Public Music API
+     ▼                              ▼
+ConfigPlaylistProvider     PublicMusicApiProvider
+     └──────────────┬───────────────┘
+                    ▼
+        PlaylistCatalogProvider
+                    ├── PlaylistBrowser → 浏览中的歌单和歌曲
+                    └── Song[] → PlayerController → Store → PlayerView
 ```
 
 约束：
@@ -100,7 +106,7 @@ PublicMusicApiProvider
 `player-element.ts` 负责：
 
 - 读取 HTML 属性并创建 Store、Engine、Controller 和 View；
-- 选择 `playlist-src` 或 `music-api` 数据源；
+- 按优先级选择 `playlist-config`、`playlist-src` 或 `music-api` 数据源；
 - 暴露播放、歌单配置、主题和浮动窗口方法；
 - 把 Store 变化转换为稳定 CustomEvent；
 - 在断开 DOM 时释放订阅、AudioContext、动画和页面事件。
@@ -125,12 +131,26 @@ interface PlaylistProvider {
 }
 ```
 
+目录型数据源额外实现：
+
+```ts
+interface PlaylistCatalogProvider extends PlaylistProvider {
+  listPlaylists(options?: PlaylistLoadOptions): Promise<PlaylistSummary[]>
+  getPlaylist(id: string | number, options?: PlaylistLoadOptions): Promise<ResolvedPlaylist>
+}
+
+interface ResolvedPlaylist extends PlaylistSummary {
+  songs: Song[]
+}
+```
+
 - `ArrayPlaylistProvider`：宿主直接提供 `Song[]`；
 - `JsonPlaylistProvider`：读取数组或包含 `playlist/songs` 的直接 JSON；
 - `FilePlaylistProvider`：保留给显式 editable 模式或未来 Admin 工具；
+- `ConfigPlaylistProvider`：读取并缓存静态 `playlists.json`，映射为来源无关的 `ResolvedPlaylist`；
 - `PublicMusicApiProvider`：读取 Spring Boot `Track/Playlist/PlaylistTrack` 契约并映射成 `Song[]`。
 
-`playlist-src` 优先于 `music-api`。Public Provider 可以通过 `playlist-id` 直读详情，也可以先读取列表并选择默认公开歌单。
+数据源优先级是 `playlist-config`、`playlist-src`、`music-api`。只要配置了其中一个外部数据源，播放器就以空队列启动；只有完全未配置外部数据源时才使用宿主提供的 `playlist` 或内置演示歌单，因此请求失败不会暴露演示内容。Config 与 Public Provider 都转换为 `ResolvedPlaylist`，由同一个 `PlaylistBrowser` 消费。Public Provider 仍保留原有 `load()`、`loadPlaylist()` 和旧式单歌单响应回退，避免破坏 Aurora 接入。
 
 `PlaylistBrowser` 只保存目录层级、当前查看的歌单、详情缓存和“哪个歌单属于当前播放队列”的标识。它不操作 `AudioEngine`，也不修改 `PlayerState.playlist`。用户浏览其他歌单时音频继续播放；点击浏览结果中的歌曲后，`PlayerController.playPlaylist()` 才替换实际队列。
 
@@ -172,9 +192,11 @@ Canvas 分成两个消费者：主 `WaveformRenderer` 和 `NowPlayingRail`。二
 ### 5.2 多歌单浏览与播放切换
 
 ```text
-组件读取 music-api
-  → PlaylistBrowser 读取公开歌单目录
-  → 选择 playlist-id、默认歌单或第一个公开歌单
+组件读取 playlist-config 或 music-api
+  → ConfigPlaylistProvider 或 PublicMusicApiProvider
+  → 统一转换为 ResolvedPlaylist
+  → PlaylistBrowser 读取歌单目录
+  → 选择 playlist-id、默认歌单或第一个歌单
   → 默认直接显示第二级歌曲列表并初始化播放队列
 
 返回第一级或浏览其他歌单

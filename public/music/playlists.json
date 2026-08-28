@@ -1,0 +1,32 @@
+{
+  "defaultPlaylistId": "local",
+  "playlists": [
+    {
+      "id": "local",
+      "name": "本地三首歌",
+      "songs": [
+        {
+          "id": "a-love-song",
+          "title": "a love song",
+          "artist": "EGO-WRAPPIN'",
+          "src": "/audio/a-love-song.mp3",
+          "lyricsUrl": "/lrc/a-love-song.lrc"
+        },
+        {
+          "id": "keshounaoshi",
+          "title": "化粧直し",
+          "artist": "東京事変",
+          "src": "/audio/化粧直し.mp3",
+          "lyricsUrl": "/lrc/化粧直し.lrc"
+        },
+        {
+          "id": "steal-a-kiss",
+          "title": "Steal A Kiss",
+          "artist": "林忆莲",
+          "src": "/audio/Steal-A-Kiss.mp3",
+          "lyricsUrl": "/lrc/Steal-A-Kiss.lrc"
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { PublicMusicApiProvider } from './public-music-api-provider'
+import type { PlaylistCatalogProvider } from './playlist-catalog-provider'
 import { PlaylistBrowser } from './playlist-browser'
 
 function createProvider() {
@@ -9,10 +9,13 @@ function createProvider() {
       { id: 'default', name: 'Default', isDefault: true },
       { id: 'other', name: 'Other' },
     ]),
-    loadPlaylist: vi.fn(async (id: string | number) => [
-      { id: `${id}-song`, title: `${id} song`, src: `/${id}.mp3` },
-    ]),
-  } as unknown as PublicMusicApiProvider
+    getPlaylist: vi.fn(async (id: string | number) => ({
+      id,
+      name: `${id} playlist`,
+      songs: [{ id: `${id}-song`, title: `${id} song`, src: `/${id}.mp3` }],
+    })),
+    load: vi.fn(),
+  } as unknown as PlaylistCatalogProvider
 }
 
 describe('PlaylistBrowser', () => {
@@ -58,6 +61,6 @@ describe('PlaylistBrowser', () => {
     browser.showPlaylists()
     await browser.browse('other')
 
-    expect(provider.loadPlaylist).toHaveBeenCalledTimes(1)
+    expect(provider.getPlaylist).toHaveBeenCalledTimes(1)
   })
 })

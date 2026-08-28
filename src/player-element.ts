@@ -7,6 +7,11 @@ import { LyricRepository } from './services/lyric-repository'
 import { MediaSessionService } from './services/media-session'
 import { PlaybackLifecycleService } from './services/playback-lifecycle'
 import { PlaybackMemory } from './services/playback-memory'
+import { ConfigPlaylistProvider } from './services/config-playlist-provider'
+import {
+  PlaylistCatalogUnavailableError,
+  type PlaylistCatalogProvider,
+} from './services/playlist-catalog-provider'
 import {
   ArrayPlaylistProvider,
   JsonPlaylistProvider,
@@ -21,6 +26,19 @@ import type { DockSidePreference } from './ui/floating-player'
 const PLAY_MODES: PlayMode[] = ['order', 'single', 'random']
 const PLAYER_THEMES: PlayerTheme[] = ['light', 'dark', 'system']
 const HTMLElementBase = (typeof HTMLElement === 'undefined' ? class {} : HTMLElement) as typeof HTMLElement
+
+export interface PlaylistSourceAttributes {
+  playlistConfig: string | null
+  playlistSrc: string | null
+  musicApi: string | null
+}
+
+export function resolveInitialPlaylist(
+  songs: readonly Song[],
+  sources: PlaylistSourceAttributes,
+): Song[] {
+  return sources.playlistConfig || sources.playlistSrc || sources.musicApi ? [] : [...songs]
+}
 
 export function resolvePlaylistMode(value: string | null): PlaylistMode {
   return value === 'editable' ? 'editable' : 'readonly'
@@ -37,6 +55,7 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     'dock-side',
     'play-mode',
     'playlist-id',
+    'playlist-config',
     'playlist-mode',
     'playlist-src',
     'remember-playback',
@@ -74,6 +93,11 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     const playlistMode = resolvePlaylistMode(this.getAttribute('playlist-mode'))
     if (this.getAttribute('playlist-mode') !== playlistMode) this.setAttribute('playlist-mode', playlistMode)
     const volume = this.readVolume()
+    const initialPlaylist = resolveInitialPlaylist(this.songs, {
+      playlistConfig: this.getAttribute('playlist-config'),
+      playlistSrc: this.getAttribute('playlist-src'),
+      musicApi: this.getAttribute('music-api'),
+    })
     const root = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
     root.replaceChildren()
     const style = document.createElement('style')
@@ -81,7 +105,7 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     root.append(style)
 
     const store = createPlayerStore({
-      playlist: [...this.songs],
+      playlist: initialPlaylist,
       currentIndex: 0,
       currentTime: 0,
       duration: 0,
@@ -150,7 +174,12 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     if (name === 'dock-side') this.view?.setDockSide(resolveDockSidePreference(newValue))
     if (name === 'remember-position') this.view?.setRememberPosition(newValue !== null)
     if (name === 'volume' && newValue !== null) this.controller.setVolume(this.readVolume())
-    if (name === 'music-api' || name === 'playlist-id' || name === 'playlist-src') this.loadConfiguredPlaylist()
+    if (
+      name === 'music-api'
+      || name === 'playlist-config'
+      || name === 'playlist-id'
+      || name === 'playlist-src'
+    ) this.loadConfiguredPlaylist()
     if (name === 'theme') this.applyTheme()
   }
 
@@ -280,6 +309,12 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     this.playlistBrowser?.destroy()
     this.playlistBrowser = undefined
     this.view?.setPlaylistBrowser(undefined)
+    const playlistId = this.getAttribute('playlist-id') || undefined
+    const playlistConfig = this.getAttribute('playlist-config')
+    if (playlistConfig) {
+      this.loadCatalogPlaylist(new ConfigPlaylistProvider(playlistConfig, { playlistId }), playlistId)
+      return
+    }
     const playlistSrc = this.getAttribute('playlist-src')
     if (playlistSrc) {
       void this.controller.loadPlaylist(new JsonPlaylistProvider(playlistSrc)).catch(() => undefined)
@@ -287,8 +322,20 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     }
     const musicApi = this.getAttribute('music-api')
     if (!musicApi) return
-    const playlistId = this.getAttribute('playlist-id') || undefined
     const provider = new PublicMusicApiProvider(musicApi)
+    this.loadCatalogPlaylist(
+      provider,
+      playlistId,
+      new PublicMusicApiProvider(musicApi, { playlistId }),
+    )
+  }
+
+  private loadCatalogPlaylist(
+    provider: PlaylistCatalogProvider,
+    playlistId?: string | number,
+    singlePlaylistFallback?: PlaylistProvider,
+  ): void {
+    if (!this.controller) return
     const browser = new PlaylistBrowser(provider)
     this.playlistBrowser = browser
     this.view?.setPlaylistBrowser(browser)
@@ -298,13 +345,13 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
           const selection = await browser.initialize(playlistId, signal)
           return selection.songs
         } catch (error) {
-          if (error instanceof Error && error.message.includes('无法浏览歌单目录')) {
+          if (error instanceof PlaylistCatalogUnavailableError && singlePlaylistFallback) {
             if (this.playlistBrowser === browser) {
               browser.destroy()
               this.playlistBrowser = undefined
               this.view?.setPlaylistBrowser(undefined)
             }
-            return new PublicMusicApiProvider(musicApi, { playlistId }).load({ signal })
+            return singlePlaylistFallback.load({ signal })
           }
           throw error
         }

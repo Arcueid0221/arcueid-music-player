@@ -1,3 +1,5 @@
+import type { PlaylistSummary } from './playlist-catalog'
+
 export interface Track {
   id: string | number
   title: string
@@ -8,16 +10,6 @@ export interface Track {
   lyricUrl?: string
   crossOrigin?: '' | 'anonymous' | 'use-credentials'
   duration?: number
-}
-
-export interface PlaylistSummary {
-  id: string | number
-  name: string
-  description?: string
-  cover?: string
-  trackCount?: number
-  isPublic?: boolean
-  isDefault?: boolean
 }
 
 export interface PlaylistTrack {
@@ -36,3 +28,5 @@ export interface PublicMusicApiEnvelope<T> {
   code?: string | number
   message?: string
 }
+
+export type { PlaylistSummary }

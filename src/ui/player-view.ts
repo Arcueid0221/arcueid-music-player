@@ -670,7 +670,7 @@ export class PlayerView {
       return
     }
     if (!browserState.playlists.length) {
-      this.appendEmptyState('暂无公开歌单')
+      this.appendEmptyState('暂无歌单')
       return
     }
 
@@ -701,7 +701,7 @@ export class PlayerView {
       name.textContent = playlist.name
       const meta = document.createElement('small')
       const count = playlist.trackCount === undefined ? undefined : `${playlist.trackCount} 首歌曲`
-      meta.textContent = [count, playlist.description].filter(Boolean).join(' · ') || '公开歌单'
+      meta.textContent = [count, playlist.description].filter(Boolean).join(' · ') || '歌单'
       copy.append(name, meta)
 
       const marker = document.createElement('span')

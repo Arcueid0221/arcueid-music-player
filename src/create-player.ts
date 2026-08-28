@@ -5,6 +5,7 @@ import type { DockSidePreference } from './ui/floating-player'
 export interface CreateMusicPlayerOptions {
   target: ParentNode
   playlist?: readonly Song[]
+  playlistConfig?: string
   musicApi?: string
   playlistId?: string | number
   playMode?: 'order' | 'single' | 'random'
@@ -33,6 +34,7 @@ export function createMusicPlayer(options: CreateMusicPlayerOptions): MusicPlaye
   const element = document.createElement('arcueid-music-player') as ArcueidMusicPlayer
   const instanceId = ++instanceSequence
   if (options.playlist) element.playlist = [...options.playlist]
+  if (options.playlistConfig) element.setAttribute('playlist-config', options.playlistConfig)
   if (options.musicApi) element.setAttribute('music-api', options.musicApi)
   if (options.playlistId !== undefined) element.setAttribute('playlist-id', String(options.playlistId))
   if (options.playMode) element.setAttribute('play-mode', options.playMode)

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import { PlaylistCatalogUnavailableError } from './playlist-catalog-provider'
 import {
   parsePublicPlaylist,
+  parsePublicResolvedPlaylist,
   parsePublicPlaylistSummaries,
   PublicMusicApiProvider,
 } from './public-music-api-provider'
@@ -39,6 +41,21 @@ describe('PublicMusicApiProvider', () => {
         crossOrigin: 'anonymous',
       }),
     ])
+  })
+
+  it('normalizes a public playlist into the shared runtime model', () => {
+    expect(parsePublicResolvedPlaylist({ data: {
+      id: 'default',
+      name: 'Default',
+      cover: './cover.jpg',
+      tracks: [{ id: 'song', title: 'Song', audioUrl: './song.mp3' }],
+    } }, 'https://blog.example/api/music/playlists/default', 'fallback')).toEqual(expect.objectContaining({
+      id: 'default',
+      name: 'Default',
+      cover: 'https://blog.example/api/music/playlists/cover.jpg',
+      trackCount: 1,
+      songs: [expect.objectContaining({ id: 'song' })],
+    }))
   })
 
   it('loads a configured playlist directly', async () => {
@@ -106,5 +123,17 @@ describe('PublicMusicApiProvider', () => {
       expect.objectContaining({ id: 'song', src: 'https://blog.example/legacy.mp3' }),
     ])
     expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a typed catalog error for the legacy single-playlist list response', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: {
+      id: 'legacy',
+      tracks: [{ id: 'song', title: 'Legacy song', audioUrl: '/legacy.mp3' }],
+    } }), { status: 200 }))
+    const provider = new PublicMusicApiProvider('https://blog.example/api/music', {
+      fetcher: fetcher as typeof fetch,
+    })
+
+    await expect(provider.listPlaylists()).rejects.toBeInstanceOf(PlaylistCatalogUnavailableError)
   })
 })
