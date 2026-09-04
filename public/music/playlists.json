@@ -27,6 +27,27 @@
           "lyricsUrl": "/lrc/Steal-A-Kiss.lrc"
         }
       ]
+    },
+    {
+      "id": "night",
+      "name": "夜间精选",
+      "description": "适合夜晚安静播放",
+      "songs": [
+        {
+          "id": "night-steal-a-kiss",
+          "title": "Steal A Kiss",
+          "artist": "林忆莲",
+          "src": "/audio/Steal-A-Kiss.mp3",
+          "lyricsUrl": "/lrc/Steal-A-Kiss.lrc"
+        },
+        {
+          "id": "night-love-song",
+          "title": "a love song",
+          "artist": "EGO-WRAPPIN'",
+          "src": "/audio/a-love-song.mp3",
+          "lyricsUrl": "/lrc/a-love-song.lrc"
+        }
+      ]
     }
   ]
 }

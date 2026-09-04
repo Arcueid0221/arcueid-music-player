@@ -1,10 +1,32 @@
 # Arcueid Music Player
 
-一个基于原生 Web Components、TypeScript、HTMLMediaElement 和 Web Audio 的博客音乐播放器。前台默认是只读播放组件，支持本地 JSON 多歌单、公开音乐 API、同步歌词、波形进度、Media Session、播放记忆以及可收缩、拖拽、侧边吸附的浮动窗口。
+[![CI](https://github.com/Arcueid0221/arcueid-music-player/actions/workflows/ci.yml/badge.svg)](https://github.com/Arcueid0221/arcueid-music-player/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-7c5cff.svg)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178c6.svg)](https://www.typescriptlang.org/)
+[![Web Component](https://img.shields.io/badge/Web%20Component-native-29b6f6.svg)](https://developer.mozilla.org/docs/Web/API/Web_components)
+
+一个基于原生 Web Components、TypeScript、HTMLMediaElement 和 Web Audio 的博客音乐播放器。它不绑定前端框架，支持静态 JSON 或公开 API 多歌单、同步歌词、波形进度、Media Session、播放记忆，以及可收缩、拖拽和侧边吸附的浮动窗口。
 
 配置 `playlist-config` 或 `music-api` 后，播放队列面板提供两级浏览：默认直接显示默认歌单歌曲，返回后可以选择其他歌单。浏览不会打断当前音乐，只有点击歌曲才会切换实际播放队列。
 
-## 开发
+## 截图
+
+| 默认歌单歌曲 | 多歌单目录 |
+| --- | --- |
+| ![默认三首歌曲列表](./docs/images/player-tracks.jpg) | ![静态 JSON 多歌单目录](./docs/images/playlist-catalog.jpg) |
+
+## 特性
+
+- 原生 Custom Element，可嵌入 Vue、React、静态页面或其他前端。
+- `playlist-config` 静态 JSON 多歌单，无需 Spring Boot、数据库或对象存储服务。
+- `music-api` 多歌单适配，保留 Aurora 公共接口兼容。
+- `playlist-src` 与 `player.playlist` 单歌单兼容。
+- LRC 与逐字歌词、波形 Seek、Media Session 和播放位置记忆。
+- 明暗主题、响应式布局、拖拽、收缩和左右停靠。
+- 只读与会话内可编辑队列模式。
+- TypeScript 类型声明、Vitest 测试与 GitHub Actions CI。
+
+## 本地开发
 
 ```bash
 npm install
@@ -94,3 +116,11 @@ instance.destroy()
 - [浏览器兼容与媒体服务器要求](./docs/BROWSER-COMPATIBILITY.md)
 
 项目只保留这三份核心文档。历史阶段审核、早期规划和迁移记录已经合并到上述文档或 Git 历史中。
+
+## 参与贡献
+
+欢迎通过 [Issues](https://github.com/Arcueid0221/arcueid-music-player/issues) 报告问题或提出建议，也欢迎提交 Pull Request。提交前请运行 `npm test` 和 `npm run build`。
+
+## License
+
+本项目基于 [MIT License](./LICENSE) 开源。

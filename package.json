@@ -2,6 +2,23 @@
   "name": "arcueid-music-player",
   "private": true,
   "version": "0.2.0",
+  "description": "A framework-agnostic Web Component music player with static JSON and API-backed multi-playlist support.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arcueid0221/arcueid-music-player.git"
+  },
+  "homepage": "https://github.com/Arcueid0221/arcueid-music-player#readme",
+  "bugs": {
+    "url": "https://github.com/Arcueid0221/arcueid-music-player/issues"
+  },
+  "keywords": [
+    "music-player",
+    "web-component",
+    "typescript",
+    "playlist",
+    "audio"
+  ],
   "type": "module",
   "module": "./dist/arcueid-music-player.js",
   "types": "./dist/arcueid-music-player.d.ts",
@@ -12,7 +29,7 @@
       "import": "./dist/arcueid-music-player.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
