@@ -4,7 +4,7 @@ export class SidebarController {
   private timer?: ReturnType<typeof setTimeout>
   private collapsed = false
   private pinned = false
-  constructor(private host: HTMLElement, private card: HTMLElement, private edge: HTMLButtonElement, private pin: HTMLButtonElement, close: HTMLButtonElement, collapsed: boolean) {
+  constructor(private host: HTMLElement, private card: HTMLElement, private edge: HTMLButtonElement, grip: HTMLButtonElement, private pin: HTMLButtonElement, close: HTMLButtonElement, collapsed: boolean) {
     const options = { signal: this.events.signal }
     host.addEventListener('pointerenter', (event) => {
       if (event.pointerType !== 'touch') this.setCollapsed(false)
@@ -13,6 +13,9 @@ export class SidebarController {
     host.addEventListener('focusin', () => this.setCollapsed(false), options)
     host.addEventListener('focusout', () => this.scheduleClose(true), options)
     edge.addEventListener('click', () => this.setCollapsed(false), options)
+    this.bindSwipe(edge, -1, () => this.setCollapsed(false), options)
+    grip.addEventListener('click', () => this.close(), options)
+    this.bindSwipe(grip, 1, () => this.close(), options)
     pin.addEventListener('click', () => {
       this.pinned = !this.pinned
       this.updatePin()
@@ -27,6 +30,21 @@ export class SidebarController {
     }, options)
     this.updatePin()
     this.setCollapsed(collapsed)
+  }
+  private bindSwipe(target: HTMLElement, direction: -1 | 1, finish: () => void, options: AddEventListenerOptions): void {
+    let start: { pointerId: number; x: number; y: number } | undefined
+    target.addEventListener('pointerdown', (event) => {
+      if (event.pointerType !== 'touch') return
+      start = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+    }, options)
+    target.addEventListener('pointerup', (event) => {
+      if (!start || event.pointerId !== start.pointerId) return
+      const dx = event.clientX - start.x
+      const dy = event.clientY - start.y
+      start = undefined
+      if (dx * direction >= 40 && Math.abs(dx) > Math.abs(dy) * 1.3) finish()
+    }, options)
+    target.addEventListener('pointercancel', () => { start = undefined }, options)
   }
   private close(): void {
     this.pinned = false

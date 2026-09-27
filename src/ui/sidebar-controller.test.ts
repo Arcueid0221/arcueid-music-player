@@ -12,9 +12,14 @@ class ElementStub extends EventTarget {
 function setup() {
   vi.useFakeTimers()
   vi.stubGlobal('document', new EventTarget())
-  const host = new ElementStub(), card = new ElementStub(), edge = new ElementStub(), pin = new ElementStub(), close = new ElementStub()
-  const controller = new SidebarController(host as unknown as HTMLElement, card as unknown as HTMLElement, edge as unknown as HTMLButtonElement, pin as unknown as HTMLButtonElement, close as unknown as HTMLButtonElement, true)
-  return { host, card, edge, pin, close, controller }
+  const host = new ElementStub(), card = new ElementStub(), edge = new ElementStub(), grip = new ElementStub(), pin = new ElementStub(), close = new ElementStub()
+  const controller = new SidebarController(host as unknown as HTMLElement, card as unknown as HTMLElement, edge as unknown as HTMLButtonElement, grip as unknown as HTMLButtonElement, pin as unknown as HTMLButtonElement, close as unknown as HTMLButtonElement, true)
+  return { host, card, edge, grip, pin, close, controller }
+}
+function touch(type: string, x: number, y: number) {
+  const event = new Event(type)
+  Object.assign(event, { pointerType: 'touch', pointerId: 1, clientX: x, clientY: y })
+  return event
 }
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('sidebar presentation', () => {
@@ -56,5 +61,22 @@ describe('sidebar presentation', () => {
     expect(x.card.inert).toBe(false)
     x.close.dispatchEvent(new Event('click'))
     expect(x.card.inert).toBe(false)
+  })
+  it('opens with a left swipe on the edge and closes with a right swipe on the grip', () => {
+    const x = setup()
+    x.edge.dispatchEvent(touch('pointerdown', 100, 100))
+    x.edge.dispatchEvent(touch('pointerup', 45, 106))
+    expect(x.card.inert).toBe(false)
+    x.grip.dispatchEvent(touch('pointerdown', 40, 100))
+    x.grip.dispatchEvent(touch('pointerup', 100, 104))
+    expect(x.card.inert).toBe(true)
+    x.controller.destroy()
+  })
+  it('ignores a vertical touch on the edge', () => {
+    const x = setup()
+    x.edge.dispatchEvent(touch('pointerdown', 100, 100))
+    x.edge.dispatchEvent(touch('pointerup', 91, 160))
+    expect(x.card.inert).toBe(true)
+    x.controller.destroy()
   })
 })

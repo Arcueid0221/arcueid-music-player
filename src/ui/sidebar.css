@@ -17,6 +17,7 @@
   transition: transform 280ms cubic-bezier(.22,1,.36,1), opacity 200ms ease, visibility 280ms;
   padding: 22px;
 }
+:host([layout="sidebar"]) .sidebar-swipe-grip { display: none; }
 :host([layout="sidebar"][collapsed]) .player-card {
   display: flex; visibility: hidden; opacity: 0; pointer-events: none;
   transform: translateX(calc(100% + 20px));
@@ -77,8 +78,11 @@
 :host([layout="sidebar"]) [hidden] { display: none !important; }
 @media (max-width: 520px) {
   :host([layout="sidebar"]) { right: 12px; width: min(350px, calc(100vw - 24px)); height: min(620px, calc(100dvh - 32px)); }
-  :host([layout="sidebar"]) .player-card { padding: 18px; border-radius: 22px; }
-  :host([layout="sidebar"]) .sidebar-edge { right: -12px; width: 24px; }
+  :host([layout="sidebar"]) .player-card { padding: 8px 18px 18px; border-radius: 22px; }
+  :host([layout="sidebar"]) .sidebar-edge { right: -12px; width: 44px; height: 120px; touch-action: pan-y; }
+  :host([layout="sidebar"]) .sidebar-edge span { width: 8px; height: 54px; margin-left: 14px; border-radius: 8px; opacity: .7; }
+  :host([layout="sidebar"]) .sidebar-swipe-grip { display: grid; place-items: center; flex: 0 0 44px; width: 100%; border: 0; padding: 0; background: transparent; touch-action: pan-y; cursor: pointer; }
+  :host([layout="sidebar"]) .sidebar-swipe-grip span { width: 40px; height: 4px; border-radius: 4px; background: var(--player-muted); opacity: .45; }
 }
 @media (prefers-reduced-motion: reduce) {
   :host([layout="sidebar"]) *, :host([layout="sidebar"]) *::before { transition: none !important; animation: none !important; }

@@ -297,6 +297,12 @@ export class PlayerView {
       edge.setAttribute('aria-label', '打开音乐播放器')
       edge.setAttribute('aria-controls', 'sidebar-player-card')
       edge.innerHTML = '<span aria-hidden="true"></span>'
+      const swipeGrip = document.createElement('button')
+      swipeGrip.className = 'sidebar-swipe-grip'
+      swipeGrip.type = 'button'
+      swipeGrip.setAttribute('aria-label', '收起音乐播放器')
+      swipeGrip.innerHTML = '<span aria-hidden="true"></span>'
+      card.prepend(swipeGrip)
       card.id = 'sidebar-player-card'
       root.append(edge)
       const transport = this.get('.transport')
@@ -307,7 +313,7 @@ export class PlayerView {
       const volume = document.createElement('output')
       volume.className = 'volume-value'
       utility.append(volume)
-      this.sidebar = new SidebarController(root.host as HTMLElement, card, edge, pin, collapseButton, floatingOptions.collapsed)
+      this.sidebar = new SidebarController(root.host as HTMLElement, card, edge, swipeGrip, pin, collapseButton, floatingOptions.collapsed)
     }
     this.bindEvents()
     this.unsubscribeAnalysis = this.analysisSource.subscribe((frame) => {
