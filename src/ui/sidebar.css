@@ -80,7 +80,7 @@
   :host([layout="sidebar"]) { right: 12px; width: min(350px, calc(100vw - 24px)); height: min(620px, calc(100dvh - 32px)); }
   :host([layout="sidebar"]) .player-card { padding: 8px 18px 18px; border-radius: 22px; }
   :host([layout="sidebar"]) .sidebar-edge { right: -12px; width: 44px; height: 120px; touch-action: pan-y; }
-  :host([layout="sidebar"]) .sidebar-edge span { width: 8px; height: 54px; margin-left: 14px; border-radius: 8px; opacity: .7; }
+  :host([layout="sidebar"]) .sidebar-edge span { width: 8px; height: 54px; margin-left: auto; border-radius: 8px; opacity: .7; }
   :host([layout="sidebar"]) .sidebar-swipe-grip { display: grid; place-items: center; flex: 0 0 44px; width: 100%; border: 0; padding: 0; background: transparent; touch-action: pan-y; cursor: pointer; }
   :host([layout="sidebar"]) .sidebar-swipe-grip span { width: 40px; height: 4px; border-radius: 4px; background: var(--player-muted); opacity: .45; }
 }

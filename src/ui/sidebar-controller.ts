@@ -4,14 +4,25 @@ export class SidebarController {
   private timer?: ReturnType<typeof setTimeout>
   private collapsed = false
   private pinned = false
+  private touchInteraction = false
   constructor(private host: HTMLElement, private card: HTMLElement, private edge: HTMLButtonElement, grip: HTMLButtonElement, private pin: HTMLButtonElement, close: HTMLButtonElement, collapsed: boolean) {
     const options = { signal: this.events.signal }
     host.addEventListener('pointerenter', (event) => {
-      if (event.pointerType !== 'touch') this.setCollapsed(false)
+      if (event.pointerType !== 'touch') {
+        this.touchInteraction = false
+        this.setCollapsed(false)
+      }
     }, options)
-    host.addEventListener('pointerleave', () => this.scheduleClose(), options)
+    host.addEventListener('pointerdown', (event) => {
+      this.touchInteraction = event.pointerType === 'touch'
+    }, options)
+    host.addEventListener('pointerleave', (event) => {
+      if (event.pointerType !== 'touch' && !this.touchInteraction) this.scheduleClose()
+    }, options)
     host.addEventListener('focusin', () => this.setCollapsed(false), options)
-    host.addEventListener('focusout', () => this.scheduleClose(true), options)
+    host.addEventListener('focusout', () => {
+      if (!this.touchInteraction) this.scheduleClose(true)
+    }, options)
     edge.addEventListener('click', () => this.setCollapsed(false), options)
     this.bindSwipe(edge, -1, () => this.setCollapsed(false), options)
     grip.addEventListener('click', () => this.close(), options)
