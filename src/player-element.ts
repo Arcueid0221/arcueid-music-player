@@ -20,6 +20,7 @@ import {
 import { PublicMusicApiProvider } from './services/public-music-api-provider'
 import { PlaylistBrowser } from './services/playlist-browser'
 import styles from './ui/player.css?inline'
+import sidebarStyles from './ui/sidebar.css?inline'
 import { PlayerView } from './ui/player-view'
 import type { DockSidePreference } from './ui/floating-player'
 
@@ -101,7 +102,7 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
     const root = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
     root.replaceChildren()
     const style = document.createElement('style')
-    style.textContent = styles
+    style.textContent = styles + sidebarStyles
     root.append(style)
 
     const store = createPlayerStore({
@@ -118,7 +119,7 @@ export class ArcueidMusicPlayer extends HTMLElementBase {
       canRetry: false,
       canSkip: false,
       playMode,
-      panel: this.hasAttribute('expanded') ? 'queue' : null,
+      panel: this.getAttribute('layout') === 'sidebar' ? 'lyrics' : this.hasAttribute('expanded') ? 'queue' : null,
       lyrics: [],
       activeLyricIndex: -1,
       lyricOffsetMs: 0,

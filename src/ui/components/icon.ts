@@ -11,6 +11,8 @@ import {
   Minus,
   Maximize2,
   Minimize2,
+  Pin,
+  ChevronRight,
   Pause,
   Play,
   Plus,
@@ -40,6 +42,8 @@ export type PlayerIcon =
   | 'minus'
   | 'maximize'
   | 'minimize'
+  | 'pin'
+  | 'chevron-right'
   | 'pause'
   | 'play'
   | 'plus'
@@ -66,6 +70,8 @@ const ICONS: Record<PlayerIcon, IconNode> = {
   minus: Minus,
   maximize: Maximize2,
   minimize: Minimize2,
+  pin: Pin,
+  'chevron-right': ChevronRight,
   pause: Pause,
   play: Play,
   plus: Plus,

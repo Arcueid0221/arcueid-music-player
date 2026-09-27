@@ -124,3 +124,15 @@ instance.destroy()
 ## License
 
 本项目基于 [MIT License](./LICENSE) 开源。
+
+## Optional rounded sidebar
+
+Set `layout="sidebar"` **before attaching** the element to opt into the right-edge rounded-card presentation. The default floating UI is unchanged.
+
+```html
+<arcueid-music-player layout="sidebar" collapsed music-api="/api/music" playlist-mode="readonly"></arcueid-music-player>
+```
+
+The sidebar opens on pointer entry or trigger click; it closes 350ms after pointer exit. The icon-only pin keeps it open. Explicit collapse or Escape unpins and closes it. Touch users can tap the edge and dismiss outside. Keyboard focus opens it; hidden content is inert. Reduced motion disables transitions.
+
+Lyrics are the default center view. The single queue control toggles lyrics and the existing playlist browser: tracks → back to playlists → select playlist → select track. Playlist/song covers, search, lyric seeking/calibration, audio analysis, playback and providers are reused. Host themes can override the existing `--player-*` tokens.

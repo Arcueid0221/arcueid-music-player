@@ -1,3 +1,4 @@
+import { SidebarController } from './sidebar-controller'
 import { AudioAnalysisSource } from '../core/audio-analysis-source'
 import type { AudioEngine } from '../core/audio-engine'
 import type { PlayerController } from '../core/player-controller'
@@ -43,7 +44,10 @@ export class PlayerView {
   private readonly nowPlayingRail: NowPlayingRail
   private readonly analysisSource: AudioAnalysisSource
   private readonly lyricView: LyricView
-  private readonly floatingPlayer: FloatingPlayerController
+  private readonly floatingPlayer?: FloatingPlayerController
+  private readonly sidebar?: SidebarController
+  private readonly isSidebar: boolean
+  private coverSource?: string
   private readonly unsubscribe: () => void
   private readonly unsubscribeAnalysis: () => void
   private lastPlaylist?: Song[]
@@ -97,6 +101,7 @@ export class PlayerView {
     private playlistMode: PlaylistMode,
     floatingOptions: PlayerViewFloatingOptions,
   ) {
+    this.isSidebar = root.host.getAttribute('layout') === 'sidebar'
     root.innerHTML += `
       <section class="player-card" aria-label="音乐播放器">
         <div class="accent-strip" aria-hidden="true"></div>
@@ -165,6 +170,7 @@ export class PlayerView {
               <button class="icon-button compact-control playlist-back" type="button" data-action="playlist-back" hidden></button>
               <h3></h3>
             </div>
+            <button class="icon-button compact-control sidebar-lyrics-shortcut" type="button" data-action="sidebar-show-lyrics" hidden></button>
             <button class="icon-button compact-control" type="button" data-action="close-panel"></button>
           </div>
           <div class="queue-toolbar" hidden>
@@ -251,6 +257,9 @@ export class PlayerView {
     setButtonIcon(this.lyricButton, 'captions', '歌词')
     setButtonIcon(this.queueButton, 'list-music', '播放队列')
     setButtonIcon(this.playlistBackButton, 'chevron-left', '返回歌单列表')
+    const sidebarLyricsShortcut = this.get<HTMLButtonElement>('[data-action="sidebar-show-lyrics"]')
+    setButtonIcon(sidebarLyricsShortcut, 'captions', '返回歌词')
+    if (this.isSidebar) sidebarLyricsShortcut.hidden = false
     setButtonIcon(this.get('[data-action="close-panel"]'), 'close', '收起面板')
     setButtonIcon(this.get('[data-action="import-playlist"]'), 'list-plus', '导入 JSON 歌单并添加到队列')
     setButtonIcon(this.retryButton, 'refresh', '立即重试当前歌曲')
@@ -264,7 +273,7 @@ export class PlayerView {
     floatingHandles.forEach((handle) => setButtonIcon(handle as HTMLButtonElement, 'drag', '移动播放器'))
     setButtonIcon(collapseButton, 'minimize', '收缩播放器')
     setButtonIcon(expandButton, 'maximize', '展开播放器')
-    this.floatingPlayer = new FloatingPlayerController({
+    if (!this.isSidebar) this.floatingPlayer = new FloatingPlayerController({
       host: root.host as HTMLElement,
       handles: floatingHandles,
       collapseButton,
@@ -272,6 +281,34 @@ export class PlayerView {
       ...floatingOptions,
     })
 
+    if (this.isSidebar) {
+      const card = this.get<HTMLElement>('.player-card')
+      const cover = document.createElement('span')
+      cover.className = 'header-artwork'
+      cover.append(createPlayerIcon('audio-lines', 24))
+      this.get('.track-header').prepend(cover)
+      const pin = this.get<HTMLButtonElement>('.floating-handle')
+      pin.removeAttribute('data-floating-handle')
+      setButtonIcon(pin, 'pin', '固定播放器')
+      setButtonIcon(collapseButton, 'chevron-right', '收起播放器')
+      const edge = document.createElement('button')
+      edge.className = 'sidebar-edge'
+      edge.type = 'button'
+      edge.setAttribute('aria-label', '打开音乐播放器')
+      edge.setAttribute('aria-controls', 'sidebar-player-card')
+      edge.innerHTML = '<span aria-hidden="true"></span>'
+      card.id = 'sidebar-player-card'
+      root.append(edge)
+      const transport = this.get('.transport')
+      transport.prepend(this.modeButton)
+      transport.append(this.queueButton)
+      const utility = this.get('.utility-row')
+      utility.prepend(this.muteButton)
+      const volume = document.createElement('output')
+      volume.className = 'volume-value'
+      utility.append(volume)
+      this.sidebar = new SidebarController(root.host as HTMLElement, card, edge, pin, collapseButton, floatingOptions.collapsed)
+    }
     this.bindEvents()
     this.unsubscribeAnalysis = this.analysisSource.subscribe((frame) => {
       this.waveform.update(frame)
@@ -304,19 +341,19 @@ export class PlayerView {
   }
 
   setCollapsed(value: boolean): void {
-    this.floatingPlayer.setCollapsed(value)
+    this.sidebar ? this.sidebar.setCollapsed(value) : this.floatingPlayer?.setCollapsed(value)
   }
 
   toggleCollapsed(): void {
-    this.floatingPlayer.toggleCollapsed()
+    this.sidebar ? this.sidebar.toggleCollapsed() : this.floatingPlayer?.toggleCollapsed()
   }
 
   setDockSide(value: DockSidePreference): void {
-    this.floatingPlayer.setDockPreference(value)
+    this.floatingPlayer?.setDockPreference(value)
   }
 
   setRememberPosition(value: boolean): void {
-    this.floatingPlayer.setRememberPosition(value)
+    this.floatingPlayer?.setRememberPosition(value)
   }
 
   destroy(): void {
@@ -325,7 +362,8 @@ export class PlayerView {
     this.unsubscribeAnalysis()
     this.unsubscribePlaylistBrowser?.()
     this.analysisSource.destroy()
-    this.floatingPlayer.destroy()
+    this.floatingPlayer?.destroy()
+    this.sidebar?.destroy()
     this.waveform.destroy()
     this.nowPlayingRail.destroy()
   }
@@ -346,6 +384,7 @@ export class PlayerView {
       if (action === 'lyric-earlier') this.controller.setLyricOffset(this.store.getState().lyricOffsetMs - 500)
       if (action === 'lyric-later') this.controller.setLyricOffset(this.store.getState().lyricOffsetMs + 500)
       if (action === 'lyric-reset') this.controller.setLyricOffset(0)
+      if (action === 'sidebar-show-lyrics') this.controller.togglePanel('lyrics')
       if (action === 'playlist-back' && this.usesPlaylistBrowser()) {
         this.resetQueueSearch()
         this.playlistBrowser?.showPlaylists()
@@ -379,7 +418,12 @@ export class PlayerView {
       }
 
       const panel = target.closest<HTMLButtonElement>('[data-panel]')?.dataset.panel
-      if (panel === 'lyrics' || panel === 'queue') this.controller.togglePanel(panel)
+      if (panel === 'lyrics' || panel === 'queue') {
+        if (this.isSidebar) {
+          const next = this.store.getState().panel === 'queue' ? 'lyrics' : 'queue'
+          this.controller.togglePanel(next)
+        } else this.controller.togglePanel(panel)
+      }
 
     }, { signal: this.eventController.signal })
 
@@ -493,6 +537,22 @@ export class PlayerView {
 
   private render(state: PlayerState): void {
     const song = state.playlist[state.currentIndex]
+    if (this.isSidebar) {
+      const source = song?.artwork?.[0]?.src || ''
+      if (source !== this.coverSource) {
+        this.coverSource = source
+        const cover = this.get('.header-artwork')
+        cover.querySelector('img')?.remove()
+        if (source) {
+          const image = document.createElement('img')
+          image.src = source
+          image.alt = ''
+          image.addEventListener('error', () => image.remove(), { once: true })
+          cover.append(image)
+        }
+      }
+      this.get('.volume-value').textContent = `${Math.round(state.volume * 100)}%`
+    }
     this.title.textContent = song?.title
       ?? (state.isPlaylistLoading ? '正在加载歌单' : this.playlistMode === 'editable' ? '等待添加歌曲' : '暂无可播放歌曲')
     this.artist.textContent = song ? [song.artist, song.album].filter(Boolean).join(' · ') || '未知艺术家' : '—'
@@ -568,6 +628,7 @@ export class PlayerView {
 
   private renderPanel(state: PlayerState): void {
     const browserState = this.usesPlaylistBrowser() ? this.playlistBrowser?.getState() : undefined
+    this.panel.dataset.view = state.panel ?? 'lyrics'
     this.panel.hidden = state.panel === null
     this.panelTitle.textContent = state.panel === 'lyrics'
       ? '同步歌词'
