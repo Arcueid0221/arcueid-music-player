@@ -26,6 +26,10 @@
 - 当前歌曲使用 `preload="auto"`，但 iOS Safari 可能根据省流量、低电量和内存策略限制预加载。
 - 跳到尚未缓冲的位置时，任何浏览器都必须继续读取音频数据，无法由播放器完全消除。部署服务器应正确返回 `Accept-Ranges: bytes`、`Content-Length`、稳定的 `Content-Type`（如 `audio/mpeg`），并支持 `206 Partial Content`；否则 Safari 可能重新下载整首音频。
 - `waiting` 状态延迟 180ms 后才显示，避免已缓冲 seek 产生一闪而过的“载入中”。
+- WebKit（macOS Safari 和 iOS 上的所有浏览器）不把音频元素接入 Web Audio：一旦接入 `MediaElementAudioSourceNode`，跳转后旧位置的声音会和新位置叠在一起（“重音”）。本机对照实验证明这与服务器、CDN 缓存头、HTTP 版本和响应速度都无关；跳转时静音增益、先暂停再跳也无法消除。而原生输出在 Safari 上跳转明显卡顿。
+- 因此 WebKit 采用接力播放：开始播放时由原生音频元素边下边播（立即出声，不接 Web Audio）；同时后台用 `fetch` 下载整首（需要 CORS）并 `decodeAudioData` 解码。解码完成后，波形先取自解码数据；下一次跳转、或暂停后再播放时，改由 `AudioBufferSourceNode` 直接播放解码后的音频，音频元素被释放。此后跳转只是重建一个 source 节点，瞬间完成且不会叠音，波形和音量（`GainNode`，iOS 上也有效）走原有的 Web Audio 图。
+- 解码后的 PCM 约为 MP3 的 20 倍（5 分钟立体声约 100 MB），因此只保留当前一首，切歌即释放；超过 12 MB 的文件或下载、解码失败时一直使用原生播放（静态波形，iOS 音量滑块无效）。
+- 已知限制：切到 Web Audio 直接播放后，iOS 锁屏或进入后台时 Web Audio 可能被系统暂停，锁屏媒体控制也可能不可用；需要真机验证。
 
 ## 发布前矩阵
 
