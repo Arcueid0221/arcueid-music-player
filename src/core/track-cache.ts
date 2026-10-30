@@ -2,10 +2,12 @@ import type { Song } from '../domain/types'
 import type { DecodedTrack } from './buffer-playback'
 
 /**
- * Decoded PCM is roughly 20× the MP3 size (about 100 MB for a five-minute
- * stereo track), so longer files stay streamed to keep iOS within its limits.
+ * Decoded PCM is roughly 15–20× the size of a 320 kbps MP3 (about 230 MB for
+ * a ten-minute stereo track). iOS keeps tabs on a tight memory budget, so it
+ * streams longer files; desktop Safari can afford anything a playlist holds.
  */
-export const MAX_CACHED_BYTES = 12 * 1024 * 1024
+export const IOS_MAX_CACHED_BYTES = 24 * 1024 * 1024
+export const DESKTOP_MAX_CACHED_BYTES = 64 * 1024 * 1024
 
 export interface TrackCacheDeps {
   fetch(url: string, init: RequestInit): Promise<Response>
@@ -30,7 +32,10 @@ export class TrackCache {
   private cached?: CachedTrack
   private pending?: { src: string; controller: AbortController }
 
-  constructor(private readonly deps: TrackCacheDeps) {}
+  constructor(
+    private readonly deps: TrackCacheDeps,
+    private readonly maxBytes = DESKTOP_MAX_CACHED_BYTES,
+  ) {}
 
   get ready(): CachedTrack | undefined {
     return this.cached
@@ -61,12 +66,12 @@ export class TrackCache {
         signal: controller.signal,
       })
       if (!response.ok) return undefined
-      if (Number(response.headers.get('content-length')) > MAX_CACHED_BYTES) {
+      if (Number(response.headers.get('content-length')) > this.maxBytes) {
         controller.abort()
         return undefined
       }
       const data = await response.arrayBuffer()
-      if (controller.signal.aborted || data.byteLength > MAX_CACHED_BYTES) return undefined
+      if (controller.signal.aborted || data.byteLength > this.maxBytes) return undefined
       const track = await this.deps.decode(data)
       if (controller.signal.aborted) return undefined
       this.cached = { src: song.src, track }

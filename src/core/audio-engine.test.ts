@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { resolveBufferedEnd, resolveOutputGain, supportsWebAudioRouting } from './audio-engine'
+import { isIOS, resolveBufferedEnd, resolveOutputGain, supportsWebAudioRouting } from './audio-engine'
 import type { DecodedTrack } from './buffer-playback'
 import { TrackCache } from './track-cache'
 
@@ -43,6 +43,13 @@ describe('supportsWebAudioRouting', () => {
     expect(supportsWebAudioRouting(agents.iPhoneSafari, 5)).toBe(false)
     expect(supportsWebAudioRouting(agents.iPhoneChrome, 5)).toBe(false)
     expect(supportsWebAudioRouting(agents.iPhoneFirefox, 5)).toBe(false)
+  })
+
+  it('tells iOS apart from desktop Safari for the decode size limit', () => {
+    expect(isIOS(agents.iPhoneSafari, 5)).toBe(true)
+    expect(isIOS(agents.iPhoneChrome, 5)).toBe(true)
+    expect(isIOS(agents.macSafari, 0)).toBe(false)
+    expect(isIOS(agents.macSafari, 5)).toBe(true)
   })
 
   it('treats iPadOS desktop-mode Safari as iOS', () => {

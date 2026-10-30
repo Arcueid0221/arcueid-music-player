@@ -1,6 +1,6 @@
 import type { AudioSnapshot, Song } from '../domain/types'
 import { BufferPlayback, decodedWindow } from './buffer-playback'
-import { TrackCache } from './track-cache'
+import { DESKTOP_MAX_CACHED_BYTES, IOS_MAX_CACHED_BYTES, TrackCache } from './track-cache'
 
 type SnapshotListener = (snapshot: AudioSnapshot) => void
 
@@ -21,14 +21,23 @@ export function resolveBufferedEnd(ranges: Pick<TimeRanges, 'length' | 'end'>, d
  * output has no such overlap, so WebKit keeps the element unrouted.
  */
 export function supportsWebAudioRouting(userAgent: string, maxTouchPoints = 0): boolean {
-  const iOS = /iPad|iPhone|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1)
-  if (iOS) return false
+  if (isIOS(userAgent, maxTouchPoints)) return false
   return !/AppleWebKit/.test(userAgent) || /Chrome|Chromium|Edg|OPR|Android/.test(userAgent)
+}
+
+/** iPadOS desktop mode reports a Mac user agent but has touch points. */
+export function isIOS(userAgent: string, maxTouchPoints = 0): boolean {
+  return /iPad|iPhone|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1)
 }
 
 function detectWebAudioRouting(): boolean {
   const nav = globalThis.navigator
   return nav ? supportsWebAudioRouting(nav.userAgent, nav.maxTouchPoints) : true
+}
+
+function detectCacheLimit(): number {
+  const nav = globalThis.navigator
+  return nav && isIOS(nav.userAgent, nav.maxTouchPoints) ? IOS_MAX_CACHED_BYTES : DESKTOP_MAX_CACHED_BYTES
 }
 
 export interface AudioEngineOptions {
@@ -67,7 +76,7 @@ export class AudioEngine {
     this.trackCache = options.trackCache ?? new TrackCache({
       fetch: (url, init) => globalThis.fetch(url, init),
       decode: (data) => this.decode(data),
-    })
+    }, detectCacheLimit())
     // Preloading the active track makes long-distance seeking less likely to
     // require a fresh range request. iOS may still limit preloading according
     // to its data-saving policy, so the UI also commits only one seek per drag.

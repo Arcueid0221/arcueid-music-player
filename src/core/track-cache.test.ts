@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Song } from '../domain/types'
 import type { DecodedTrack } from './buffer-playback'
-import { MAX_CACHED_BYTES, TrackCache } from './track-cache'
+import { DESKTOP_MAX_CACHED_BYTES, IOS_MAX_CACHED_BYTES, TrackCache } from './track-cache'
 
 const song = (src: string): Song => ({ id: src, title: src, artist: 'a', src, crossOrigin: 'anonymous' })
 const decoded: DecodedTrack = { duration: 1, sampleRate: 4, numberOfChannels: 1, getChannelData: () => new Float32Array(4) }
@@ -59,9 +59,21 @@ describe('TrackCache', () => {
     expect(cache.ready).toBeUndefined()
   })
 
+  it('applies the size limit it was given, so iOS streams files desktop Safari would decode', async () => {
+    const size = 20 * 1024 * 1024
+    const sized = () => {
+      const deps = fakeDeps()
+      deps.fetch.mockResolvedValue(new Response(null, { headers: { 'content-length': String(size) } }))
+      return deps
+    }
+    expect(await new TrackCache(sized(), IOS_MAX_CACHED_BYTES).prefetch(song('a.mp3'))).toBeDefined()
+    expect(await new TrackCache(sized(), 16 * 1024 * 1024).prefetch(song('a.mp3'))).toBeUndefined()
+    expect(await new TrackCache(sized()).prefetch(song('a.mp3'))).toBeDefined()
+  })
+
   it('leaves playback streamed when the download is unusable', async () => {
     const tooLarge = fakeDeps()
-    tooLarge.fetch.mockResolvedValue(new Response(null, { headers: { 'content-length': String(MAX_CACHED_BYTES + 1) } }))
+    tooLarge.fetch.mockResolvedValue(new Response(null, { headers: { 'content-length': String(DESKTOP_MAX_CACHED_BYTES + 1) } }))
     expect(await new TrackCache(tooLarge).prefetch(song('a.mp3'))).toBeUndefined()
     expect(tooLarge.decode).not.toHaveBeenCalled()
 
